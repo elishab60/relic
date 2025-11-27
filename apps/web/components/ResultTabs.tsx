@@ -15,8 +15,8 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                 <div className="text-right">
                     <div className="text-sm text-terminal-dim">Grade</div>
                     <div className={`text-4xl font-bold ${result.grade === 'A' ? 'text-green-500' :
-                            result.grade === 'B' ? 'text-blue-500' :
-                                result.grade === 'C' ? 'text-yellow-500' : 'text-red-500'
+                        result.grade === 'B' ? 'text-blue-500' :
+                            result.grade === 'C' ? 'text-yellow-500' : 'text-red-500'
                         }`}>{result.grade}</div>
                 </div>
             </div>
@@ -28,8 +28,8 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                         <div className="flex justify-between mb-2">
                             <span className="font-bold text-white">{finding.title}</span>
                             <span className={`text-xs px-2 py-0.5 rounded border ${finding.severity === 'High' ? 'border-red-500 text-red-500' :
-                                    finding.severity === 'Medium' ? 'border-yellow-500 text-yellow-500' :
-                                        'border-blue-500 text-blue-500'
+                                finding.severity === 'Medium' ? 'border-yellow-500 text-yellow-500' :
+                                    'border-blue-500 text-blue-500'
                                 }`}>{finding.severity}</span>
                         </div>
                         <p className="text-sm text-terminal-dim mb-2">{finding.impact}</p>
@@ -45,6 +45,17 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
             >
                 <Download size={18} /> Download Executive Report
             </a>
+
+            {result.debug_info && (
+                <div className="space-y-4 pt-6 border-t border-terminal-border">
+                    <h3 className="text-lg font-semibold text-terminal-accent">Debug Info (Raw Data)</h3>
+                    <div className="bg-terminal-dim/5 border border-terminal-border p-4 rounded overflow-x-auto">
+                        <pre className="text-xs text-terminal-dim font-mono">
+                            {JSON.stringify(result.debug_info, null, 2)}
+                        </pre>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

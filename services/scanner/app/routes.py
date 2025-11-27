@@ -11,50 +11,81 @@ from .pdf import generate_pdf
 
 router = APIRouter()
 
-async def run_scan_simulation(scan_id: str, target: str):
-    """Simulates a scan process."""
-    steps = [
-        ("INFO", "Starting scan for target: " + target),
-        ("INFO", "Resolving DNS..."),
-        ("INFO", "Checking SSL/TLS configuration..."),
-        ("WARNING", "Weak cipher suite detected: TLS_RSA_WITH_AES_128_CBC_SHA"),
-        ("INFO", "Crawling endpoints..."),
-        ("INFO", "Analyzing HTTP headers..."),
-        ("INFO", "Testing for XSS vulnerabilities..."),
-        ("INFO", "Testing for SQL Injection..."),
-        ("INFO", "Scan completed.")
-    ]
+from .scanner.engine import ScanEngine
+from .scanner.models import ScanLogEntry
+
+async def run_scan_task(scan_id: str, target: str):
+    """Runs the real scan using ScanEngine."""
+    engine = ScanEngine()
     
+    # Initialize logs in store
     scans[scan_id]["logs"] = []
     
-    for level, msg in steps:
-        await asyncio.sleep(0.8) # Simulate work
-        log = {"ts": datetime.now().strftime("%H:%M:%S"), "level": level, "msg": msg}
-        scans[scan_id]["logs"].append(log)
-    
-    # Generate result
-    findings = [
-        Finding(title="Weak SSL Cipher", severity="Medium", impact="Potential traffic interception", recommendation="Disable TLS 1.0/1.1 and weak ciphers"),
-        Finding(title="Missing HSTS Header", severity="Low", impact="Man-in-the-middle risk", recommendation="Enable Strict-Transport-Security"),
-        Finding(title="Exposed Server Version", severity="Info", impact="Information disclosure", recommendation="Hide server tokens")
-    ]
-    
-    result = ScanResult(
-        scan_id=scan_id,
-        target=target,
-        status="done",
-        score=75,
-        grade="B",
-        findings=findings,
-        timestamp=datetime.now()
-    )
-    
-    scans[scan_id]["result"] = result.model_dump()
-    scans[scan_id]["status"] = "done"
-    
-    # Generate PDF
-    pdf_bytes = generate_pdf(result)
-    scans[scan_id]["pdf"] = pdf_bytes
+    async def log_callback(entry: ScanLogEntry):
+        # Convert to dict for SSE/Store
+        log_dict = {
+            "timestamp": entry.timestamp.isoformat(),
+            "level": entry.level,
+            "message": entry.message
+        }
+        scans[scan_id]["logs"].append(log_dict)
+        
+    # Run the scan
+    try:
+        result = await engine.run_scan(target, log_callback)
+        
+        # Convert dataclass result to Pydantic model dict
+        # We need to add scan_id and status which are not in the engine result
+        
+        findings_dicts = [
+            {
+                "title": f.title,
+                "severity": f.severity,
+                "category": f.category,
+                "description": f.description,
+                "recommendation": f.recommendation,
+                "evidence": f.evidence
+            } for f in result.findings
+        ]
+        
+        logs_dicts = [
+            {
+                "timestamp": l.timestamp,
+                "level": l.level,
+                "message": l.message
+            } for l in result.logs
+        ]
+        
+        scan_result_dict = {
+            "scan_id": scan_id,
+            "target": result.target,
+            "status": "done",
+            "score": result.score,
+            "grade": result.grade,
+            "findings": findings_dicts,
+            "logs": logs_dicts,
+            "timestamp": result.scanned_at,
+            "response_time_ms": result.response_time_ms,
+            "debug_info": result.debug_info
+        }
+        
+        scans[scan_id]["result"] = scan_result_dict
+        scans[scan_id]["status"] = "done"
+        
+        # Generate PDF
+        # We might need to update generate_pdf to handle new fields if it uses them
+        # For now, let's assume it handles the dict or object. 
+        # The generate_pdf function likely expects a Pydantic model or dict.
+        # Let's instantiate the Pydantic model to be safe and pass it.
+        
+        pydantic_result = ScanResult(**scan_result_dict)
+        pdf_bytes = generate_pdf(pydantic_result)
+        scans[scan_id]["pdf"] = pdf_bytes
+        
+    except Exception as e:
+        print(f"Scan failed: {e}")
+        scans[scan_id]["status"] = "failed"
+        scans[scan_id]["error"] = str(e)
 
 @router.post("/scan", response_model=ScanResponse)
 async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks):
@@ -64,7 +95,7 @@ async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks):
     scan_id = str(uuid.uuid4())
     scans[scan_id] = {"status": "running", "logs": [], "result": None, "pdf": None}
     
-    background_tasks.add_task(run_scan_simulation, scan_id, request.target)
+    background_tasks.add_task(run_scan_task, scan_id, request.target)
     
     return ScanResponse(scan_id=scan_id)
 

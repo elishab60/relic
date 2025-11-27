@@ -44,7 +44,7 @@ def generate_pdf(result: ScanResult) -> bytes:
         
         c.setFont("Helvetica", 10)
         c.setFillColor(colors.darkgray)
-        c.drawString(50, y, f"Impact: {finding.impact}")
+        c.drawString(50, y, f"Description: {finding.description}")
         y -= 15
         c.drawString(50, y, f"Recommendation: {finding.recommendation}")
         y -= 40

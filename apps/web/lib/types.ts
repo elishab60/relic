@@ -19,4 +19,5 @@ export interface ScanResult {
     grade: string;
     findings: Finding[];
     timestamp: string;
+    debug_info?: Record<string, any>;
 }

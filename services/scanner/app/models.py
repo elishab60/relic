@@ -1,20 +1,22 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class ScanRequest(BaseModel):
     target: str
 
 class ScanLog(BaseModel):
-    ts: str
+    timestamp: datetime
     level: str
-    msg: str
+    message: str
 
 class Finding(BaseModel):
     title: str
     severity: str
-    impact: str
+    category: str
+    description: str
     recommendation: str
+    evidence: Optional[str] = None
 
 class ScanResult(BaseModel):
     scan_id: str
@@ -23,7 +25,10 @@ class ScanResult(BaseModel):
     score: int
     grade: str
     findings: List[Finding]
+    logs: List[ScanLog]
     timestamp: datetime
+    response_time_ms: Optional[int] = None
+    debug_info: Optional[Dict[str, Any]] = None
 
 class ScanResponse(BaseModel):
     scan_id: str
