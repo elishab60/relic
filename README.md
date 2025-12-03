@@ -90,13 +90,53 @@ Le cœur technique (`services/scanner`) implémente les vérifications suivantes
 
 ---
 
+### Couverture OWASP 2021
+
+Relic n'est pas un audit de sécurité exhaustif, mais son moteur s'aligne sur plusieurs catégories critiques de l'**OWASP Top 10 2021** pour détecter les failles les plus courantes :
+
+*   **A01:2021 – Broken Access Control**
+    *   Exposition de services sensibles (ports de base de données ouverts, endpoints admin non protégés).
+*   **A02:2021 – Cryptographic Failures**
+    *   HTTPS non imposé, protocoles non chiffrés (FTP, POP3 sans TLS), configurations TLS faibles ou certificats expirés.
+*   **A03:2021 – Injection**
+    *   Détection basique de XSS réfléchie (Reflected XSS) et d’injections SQL (Error-based & Time-based).
+*   **A05:2021 – Security Misconfiguration**
+    *   Fichiers sensibles (.env, dumps, configs) exposés, headers de sécurité manquants (HSTS, CSP), services inutiles exposés.
+
+> **Note** : La couverture est partielle et optimisée pour la démonstration et l'éducation.
+
+### Tech Stack
+
+Le projet repose sur une pile technique moderne et robuste :
+
+**Backend / Scanner (Python)**
+*   `fastapi` : API HTTP asynchrone performante pour piloter les scans et exposer les endpoints.
+*   `httpx` : Client HTTP asynchrone utilisé pour le scan des URLs, l'analyse des headers et les tests de vulnérabilités.
+*   `pydantic` / `sqlmodel` : Modèles de données typés pour la validation stricte et la persistance.
+*   `typer` : Création d'une CLI ergonomique et intuitive.
+*   `reportlab` : Moteur de génération des rapports PDF vectoriels.
+*   `beautifulsoup4` : Parsing HTML pour le crawler et l'analyse de contenu.
+*   `asyncio` : Orchestration asynchrone native pour paralléliser les tâches de scan.
+
+**Frontend / Web UI**
+*   `next` / `react` : Framework React pour une interface réactive (App Router) et le rendu côté serveur.
+*   `typescript` : Typage statique pour une meilleure maintenabilité du code frontend.
+*   `tailwindcss` : Framework CSS utilitaire pour un design rapide et cohérent.
+*   `framer-motion` : Gestion des animations fluides (loaders, transitions).
+*   `lucide-react` : Bibliothèque d'icônes vectorielles légères.
+
+**Infra / Outillage**
+*   `docker` / `docker-compose` : Conteneurisation et orchestration des services pour un déploiement iso-prod.
+
+---
+
 ## Installation & Démarrage
 
 La méthode recommandée est **Docker Compose** pour une stack complète et isolée.
 
 ```bash
 # 1. Cloner le projet
-git clone <votre-repo>
+git clone https://github.com/elishab60/relic.git
 cd relic
 
 # 2. Lancer la stack

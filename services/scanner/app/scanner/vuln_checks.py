@@ -15,7 +15,8 @@ async def check_exposure(headers: Dict[str, str]) -> List[Finding]:
             severity="info",
             category="exposure",
             description=f"The 'Server' header is exposed: {headers_lower['server']}.",
-            recommendation="Configure the server to suppress or obscure the 'Server' header."
+            recommendation="Configure the server to suppress or obscure the 'Server' header.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
         
     if "x-powered-by" in headers_lower:
@@ -24,7 +25,8 @@ async def check_exposure(headers: Dict[str, str]) -> List[Finding]:
             severity="low",
             category="exposure",
             description=f"The 'X-Powered-By' header is exposed: {headers_lower['x-powered-by']}.",
-            recommendation="Remove the 'X-Powered-By' header to hide the underlying technology."
+            recommendation="Remove the 'X-Powered-By' header to hide the underlying technology.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
         
     return findings
@@ -124,7 +126,8 @@ async def check_xss_url(url: str, http_client: HttpClient, log_callback: Callabl
                                     category="xss",
                                     description=description,
                                     recommendation="Implement context-aware output encoding and validate all input.",
-                                    evidence=evidence_str
+                                    evidence=evidence_str,
+                                    owasp_refs=["A03:2021-Injection"]
                                 ))
                                 
                                 if log_callback:
@@ -196,7 +199,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                                     category="sqli",
                                     description="Database error message found.",
                                     recommendation="Use parameterized queries.",
-                                    evidence=f"Signature: '{sig}'\nPayload: {payload}"
+                                    evidence=f"Signature: '{sig}'\nPayload: {payload}",
+                                    owasp_refs=["A03:2021-Injection"]
                                 ))
                                 if log_callback:
                                     await log_callback("WARNING", f"SQL Error found on {param}")
@@ -245,7 +249,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                             category="sqli",
                             description=f"Response delayed by ~{avg_duration:.2f}s (Baseline: {avg_baseline:.2f}s).",
                             recommendation="Use parameterized queries.",
-                            evidence=f"Payload: {payload}\nAvg Duration: {avg_duration:.2f}s\nBaseline: {avg_baseline:.2f}s"
+                            evidence=f"Payload: {payload}\nAvg Duration: {avg_duration:.2f}s\nBaseline: {avg_baseline:.2f}s",
+                            owasp_refs=["A03:2021-Injection"]
                         ))
                         if log_callback:
                             await log_callback("WARNING", f"Blind SQLi confirmed on {param}")
@@ -258,7 +263,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                                 category="sqli",
                                 description="Request timed out consistently with sleep payload.",
                                 recommendation="Use parameterized queries.",
-                                evidence=f"Payload: {payload}\nResult: Timeout"
+                                evidence=f"Payload: {payload}\nResult: Timeout",
+                                owasp_refs=["A03:2021-Injection"]
                             ))
                          break
 
@@ -375,7 +381,8 @@ async def check_https_enforcement(target_info: 'TargetInfo', http_client: HttpCl
             category="tls", # Fits TLS/Encryption category
             description="Le site est accessible en HTTP sans redirection automatique vers HTTPS, bien que HTTPS soit disponible.",
             recommendation="Forcer la redirection 301 vers HTTPS, servir HSTS uniquement sur HTTPS, envisager includeSubDomains.",
-            evidence=f"HTTP URL: {debug_data['http_final_url']}\nHTTPS is reachable."
+            evidence=f"HTTP URL: {debug_data['http_final_url']}\nHTTPS is reachable.",
+            owasp_refs=["A02:2021-Cryptographic Failures", "A05:2021-Security Misconfiguration"]
         ))
         debug_data["outcome"] = "fail"
         debug_data["reason"] = "HTTPS not enforced"
@@ -445,7 +452,8 @@ async def check_sensitive_url(url: str, http_client: HttpClient, log_callback: C
                     category="exposure",
                     description=description,
                     recommendation="Remove this file immediately and rotate any exposed credentials.",
-                    evidence=f"URL: {url}\nSecrets found: {', '.join(found_secrets)}\nSnippet: {content[:200]}..."
+                    evidence=f"URL: {url}\nSecrets found: {', '.join(found_secrets)}\nSnippet: {content[:200]}...",
+                    owasp_refs=["A05:2021-Security Misconfiguration", "A02:2021-Cryptographic Failures"]
                 ))
                 if log_callback:
                     await log_callback("WARNING", f"Sensitive file confirmed: {url} ({', '.join(found_secrets)})")

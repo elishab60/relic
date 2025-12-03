@@ -26,6 +26,7 @@ CRITICAL CONSTRAINTS:
 - Do NOT change the JSON SCHEMA.
 - Do NOT invent vulnerabilities that are not supported by the input.
 - If some information is missing in the input, do NOT hallucinate: just focus on what is given.
+- The input JSON contains an 'owasp_refs' field for each finding and open port. You MUST use these references (e.g., "A03:2021-Injection") in your analysis and mention them explicitly in the report.
 
 OUTPUT SCHEMA (MANDATORY):
 
@@ -69,7 +70,7 @@ DETAILED INSTRUCTIONS:
   - E ≈ 50-59
   - F < 50
 - The numeric field should reflect the global security posture based on:
-  - network exposure (open ports, unexpected services),
+  - network exposure (open ports, unexpected services, and their associated 'owasp_refs'),
   - TLS configuration (protocol, ciphers, validity),
   - presence/absence of key security headers,
   - presence of serious findings (high/critical),
@@ -103,7 +104,7 @@ DETAILED INSTRUCTIONS:
   - "title": reformule le titre pour qu’il soit clair et court.
   - "severity": low/medium/high/critical.
   - "area": zone impactée.
-  - "explanation_simple": explique en français, 2 à 4 phrases.
+  - "explanation_simple": explique en français, 2 à 4 phrases. Si des références OWASP sont fournies dans l'input (ex: pour les ports ouverts), mentionnez-les ici.
   - "fix_recommendation": action claire et concrète pour corriger.
 
 5) site_map
@@ -192,7 +193,8 @@ async def run_scan_task(scan_id: str, target: str):
                 "category": f.category,
                 "description": f.description,
                 "recommendation": f.recommendation,
-                "evidence": f.evidence
+                "evidence": f.evidence,
+                "owasp_refs": f.owasp_refs
             } for f in result.findings
         ]
 

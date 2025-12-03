@@ -19,6 +19,7 @@ class Finding(BaseModel):
     description: str
     recommendation: str
     evidence: Optional[str] = None
+    owasp_refs: List[str] = []
 
 class ScanResult(BaseModel):
     scan_id: str

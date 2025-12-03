@@ -316,13 +316,13 @@ class ScanEngine:
                 filtered_count = 0
                 EXPECTED_PORTS = {80, 443}
                 for p in port_scan_results:
-                    if p.get("state") == "open":
-                        port_num = p.get("port")
-                        service = p.get("service_guess", "unknown")
+                    if p.state == "open":
+                        port_num = p.port
+                        service = p.service_guess or "unknown"
                         open_ports.append({"port": port_num, "service": service})
                         if port_num not in EXPECTED_PORTS:
                             unexpected_services.append({"port": port_num, "service": service})
-                    elif p.get("state") == "filtered":
+                    elif p.state == "filtered":
                         filtered_count += 1
                 
                 open_ports_list = ", ".join([f"{op['port']} ({op['service'].upper()})" for op in open_ports])
@@ -354,7 +354,7 @@ class ScanEngine:
                 "checks": checks_outcomes,
                 "discovery": discovery_results,
                 "discovered_paths": discovered_paths,
-                "ports": port_scan_results,
+                "ports": [p.model_dump() for p in port_scan_results],
                 "network_exposure": network_exposure,
                 "http_traffic": self.http_client.history
             }

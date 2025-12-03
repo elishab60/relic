@@ -15,7 +15,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
             severity="medium",
             category="headers",
             description="The 'Strict-Transport-Security' header is missing. This header ensures that browsers only connect to the site via HTTPS.",
-            recommendation="Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload'."
+            recommendation="Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload'.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
         
     # Content-Security-Policy
@@ -25,7 +26,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
             severity="medium",
             category="headers",
             description="The 'Content-Security-Policy' header is missing. This header helps prevent XSS and other code injection attacks.",
-            recommendation="Define a strict Content-Security-Policy to restrict sources of executable scripts and other resources."
+            recommendation="Define a strict Content-Security-Policy to restrict sources of executable scripts and other resources.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
     else:
         csp_value = headers_lower["content-security-policy"]
@@ -36,7 +38,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
                 category="headers",
                 description="The Content-Security-Policy allows 'unsafe-eval', which enables the use of eval() and similar mechanisms.",
                 recommendation="Avoid using 'unsafe-eval' if possible.",
-                evidence=f"CSP value: {csp_value[:100]}..." if len(csp_value) > 100 else f"CSP value: {csp_value}"
+                evidence=f"CSP value: {csp_value[:100]}..." if len(csp_value) > 100 else f"CSP value: {csp_value}",
+                owasp_refs=["A05:2021-Security Misconfiguration"]
             ))
             
         if "'unsafe-inline'" in csp_value:
@@ -46,7 +49,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
                 category="headers",
                 description="The Content-Security-Policy allows 'unsafe-inline', which enables inline scripts and styles.",
                 recommendation="Avoid using 'unsafe-inline' and use nonces or hashes instead.",
-                evidence=f"CSP value: {csp_value[:100]}..." if len(csp_value) > 100 else f"CSP value: {csp_value}"
+                evidence=f"CSP value: {csp_value[:100]}..." if len(csp_value) > 100 else f"CSP value: {csp_value}",
+                owasp_refs=["A05:2021-Security Misconfiguration"]
             ))
         
     # X-Frame-Options
@@ -56,7 +60,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
             severity="low",
             category="headers",
             description="The 'X-Frame-Options' header is missing. This header helps prevent Clickjacking attacks.",
-            recommendation="Add 'X-Frame-Options: DENY' or 'SAMEORIGIN'."
+            recommendation="Add 'X-Frame-Options: DENY' or 'SAMEORIGIN'.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
         
     # X-Content-Type-Options
@@ -66,7 +71,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
             severity="low",
             category="headers",
             description="The 'X-Content-Type-Options' header is missing. This prevents the browser from MIME-sniffing a response away from the declared content-type.",
-            recommendation="Add 'X-Content-Type-Options: nosniff'."
+            recommendation="Add 'X-Content-Type-Options: nosniff'.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
         
     # Referrer-Policy
@@ -76,7 +82,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
             severity="info",
             category="headers",
             description="The 'Referrer-Policy' header is missing. This controls how much referrer information is sent with requests.",
-            recommendation="Add 'Referrer-Policy: strict-origin-when-cross-origin' or similar."
+            recommendation="Add 'Referrer-Policy: strict-origin-when-cross-origin' or similar.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
         
     # Permissions-Policy
@@ -86,7 +93,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
             severity="info",
             category="headers",
             description="The 'Permissions-Policy' header is missing. This allows you to enable or disable certain browser features.",
-            recommendation="Add a Permissions-Policy header to restrict access to sensitive features like camera, microphone, etc."
+            recommendation="Add a Permissions-Policy header to restrict access to sensitive features like camera, microphone, etc.",
+            owasp_refs=["A05:2021-Security Misconfiguration"]
         ))
 
     return findings
@@ -122,7 +130,8 @@ def check_cors(headers: Dict[str, str]) -> tuple[List[Finding], Dict[str, any]]:
             category="headers", # Using headers category as CORS is header-based
             description="The server allows access from any origin ('*') while also allowing credentials (cookies, auth headers). This is a critical security risk.",
             recommendation="Restrict 'Access-Control-Allow-Origin' to a whitelist of trusted domains and avoid using wildcard with credentials.",
-            evidence=f"Access-Control-Allow-Origin: {allow_origin}\nAccess-Control-Allow-Credentials: {allow_credentials}"
+            evidence=f"Access-Control-Allow-Origin: {allow_origin}\nAccess-Control-Allow-Credentials: {allow_credentials}",
+            owasp_refs=["A05:2021-Security Misconfiguration", "A01:2021-Broken Access Control"]
         ))
         
     return findings, cors_info

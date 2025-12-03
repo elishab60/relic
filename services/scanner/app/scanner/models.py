@@ -13,6 +13,7 @@ class Finding:
     description: str
     recommendation: str
     evidence: Optional[str] = None
+    owasp_refs: List[str] = field(default_factory=list)
     id: str = field(default_factory=lambda: "") # Can be generated if needed
 
 @dataclass

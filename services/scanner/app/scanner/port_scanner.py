@@ -1,9 +1,19 @@
 import asyncio
 import socket
-from typing import List, Dict, Optional, Callable, Awaitable
+from typing import List, Dict, Optional, Callable, Awaitable, Literal
+from pydantic import BaseModel
 from ..config import settings
 
 HTTP_PORTS = {80, 8080, 443, 8443}
+
+class PortScanResult(BaseModel):
+    port: int
+    state: Literal["open", "closed", "filtered"]
+    service_guess: Optional[str] = None
+    banner: Optional[str] = None
+    risk_level: Optional[Literal["info", "low", "medium", "high"]] = None
+    risk_reason: Optional[str] = None
+    owasp_refs: List[str] = []
 
 def guess_service(port: int) -> str:
     services = {
@@ -21,6 +31,28 @@ def guess_service(port: int) -> str:
         8443: "https-alt"
     }
     return services.get(port, "unknown")
+
+def assess_risk(port: int, service: str, banner: Optional[str]) -> tuple[Optional[str], Optional[str], List[str]]:
+    """
+    Returns (risk_level, risk_reason, owasp_refs)
+    """
+    # Default safe ports
+    if port in [80, 443, 8080, 8443]:
+        return "info", "Standard web port", []
+
+    # Sensitive services
+    if port in [21, 22, 23, 25, 3389, 3306, 5432, 6379, 27017]:
+        refs = ["A05:2021-Security Misconfiguration"]
+        if port in [21, 23]: # FTP, Telnet
+            return "medium", f"Insecure protocol ({service}) exposed", refs + ["A02:2021-Cryptographic Failures"]
+        if port in [3306, 5432, 6379, 27017]: # Databases
+            return "medium", f"Database service ({service}) exposed to public internet", refs + ["A01:2021-Broken Access Control"]
+        if port == 22: # SSH
+            return "low", "SSH exposed (ensure strong auth/keys)", refs
+        if port == 3389: # RDP
+            return "medium", "RDP exposed", refs
+            
+    return "info", f"Open port {port} ({service})", []
 
 async def grab_banner(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, port: int) -> Optional[str]:
     banner = None
@@ -52,7 +84,7 @@ async def grab_banner(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         
     return banner
 
-async def scan_single_port(ip: str, port: int, log_callback: Optional[Callable[[str, str], Awaitable[None]]]) -> Dict:
+async def scan_single_port(ip: str, port: int, log_callback: Optional[Callable[[str, str], Awaitable[None]]]) -> PortScanResult:
     state = "closed"
     banner = None
     service_guess = guess_service(port)
@@ -69,6 +101,8 @@ async def scan_single_port(ip: str, port: int, log_callback: Optional[Callable[[
             
         # Grab banner
         banner = await grab_banner(reader, writer, port)
+        if banner and log_callback:
+             await log_callback("DEBUG", f"Banner on port {port}: {banner}")
         
         # Close connection
         writer.close()
@@ -79,25 +113,31 @@ async def scan_single_port(ip: str, port: int, log_callback: Optional[Callable[[
             
     except asyncio.TimeoutError:
         state = "filtered"
+        if log_callback:
+             await log_callback("DEBUG", f"Port {port} filtered (timeout)")
     except (ConnectionRefusedError, OSError):
         state = "closed"
     except Exception as e:
         # Fallback for other errors
         state = "closed"
+        if log_callback:
+             await log_callback("DEBUG", f"Port {port} check error: {e}")
 
-    result = {
-        "port": port,
-        "state": state
-    }
-    
+    risk_level, risk_reason, owasp_refs = (None, None, [])
     if state == "open":
-        result["service_guess"] = service_guess
-        if banner:
-            result["banner"] = banner
-            
-    return result
+        risk_level, risk_reason, owasp_refs = assess_risk(port, service_guess, banner)
 
-async def scan_ports(ip_address: str, log_callback: Optional[Callable[[str, str], Awaitable[None]]] = None) -> List[Dict]:
+    return PortScanResult(
+        port=port,
+        state=state,
+        service_guess=service_guess if state == "open" else None,
+        banner=banner,
+        risk_level=risk_level,
+        risk_reason=risk_reason,
+        owasp_refs=owasp_refs
+    )
+
+async def scan_ports(ip_address: str, log_callback: Optional[Callable[[str, str], Awaitable[None]]] = None) -> List[PortScanResult]:
     if log_callback:
         await log_callback("INFO", f"Starting TCP port scan on {ip_address}...")
         
@@ -108,10 +148,10 @@ async def scan_ports(ip_address: str, log_callback: Optional[Callable[[str, str]
     results = await asyncio.gather(*tasks)
     
     # Sort by port number for cleaner output
-    results.sort(key=lambda x: x["port"])
+    results.sort(key=lambda x: x.port)
     
     if log_callback:
-        open_count = sum(1 for r in results if r["state"] == "open")
+        open_count = sum(1 for r in results if r.state == "open")
         await log_callback("INFO", f"Port scan completed. Found {open_count} open ports.")
         
     return results

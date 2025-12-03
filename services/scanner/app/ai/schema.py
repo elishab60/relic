@@ -44,20 +44,36 @@ def build_ai_scan_view(raw: Dict[str, Any]) -> Dict[str, Any]:
     # 3. Network Exposure
     try:
         net_raw = raw.get("network_exposure", {})
+        ports_raw = raw.get("ports", [])
+        
+        # Build detailed ports list if available
+        detailed_ports = []
+        if isinstance(ports_raw, list):
+            for p in ports_raw:
+                if isinstance(p, dict) and p.get("state") == "open":
+                    detailed_ports.append({
+                        "port": p.get("port"),
+                        "state": p.get("state"),
+                        "service_guess": p.get("service_guess"),
+                        "banner": p.get("banner"),
+                        "risk_level": p.get("risk_level"),
+                        "risk_reason": p.get("risk_reason"),
+                        "owasp_refs": p.get("owasp_refs", [])
+                    })
+
         if net_raw:
             ai_view["network_exposure"] = {
                 "open_ports": net_raw.get("open_ports", []),
                 "summary": net_raw.get("summary"),
-                "unexpected_services": net_raw.get("unexpected_services", [])
+                "unexpected_services": net_raw.get("unexpected_services", []),
+                "details": detailed_ports # Add full details here
             }
-        elif raw.get("ports"):
-            # Fallback to ports list if network_exposure summary is missing
-            ports_list = raw.get("ports", [])
-            if isinstance(ports_list, list):
-                open_ports = [p.get("port") for p in ports_list if p.get("state") == "open"]
-                ai_view["network_exposure"] = {"open_ports": open_ports}
-            elif isinstance(ports_list, dict):
-                 ai_view["network_exposure"] = {"open_ports": ports_list.get("open_ports", [])}
+        else:
+            # Fallback
+            ai_view["network_exposure"] = {
+                "open_ports": [p["port"] for p in detailed_ports if p.get("state") == "open"],
+                "details": detailed_ports
+            }
     except Exception:
         pass
 
@@ -156,7 +172,8 @@ def build_ai_scan_view(raw: Dict[str, Any]) -> Dict[str, Any]:
                     "severity": f.get("severity"),
                     "category": f.get("category"),
                     "description": f.get("description"),
-                    "recommendation": f.get("recommendation")
+                    "recommendation": f.get("recommendation"),
+                    "owasp_refs": f.get("owasp_refs", [])
                 })
             ai_view["findings"] = simplified_findings
     except Exception:

@@ -35,7 +35,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
                         severity="medium",
                         category="tls",
                         description=f"The server supports an obsolete TLS version: {version}.",
-                        recommendation="Disable TLS 1.0 and 1.1. Upgrade to TLS 1.2 or 1.3."
+                        recommendation="Disable TLS 1.0 and 1.1. Upgrade to TLS 1.2 or 1.3.",
+                        owasp_refs=["A02:2021-Cryptographic Failures", "A05:2021-Security Misconfiguration"]
                     ))
                 
                 # Get cert
@@ -72,7 +73,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
                                 severity="high",
                                 category="tls",
                                 description=f"The SSL certificate expired on {not_after}.",
-                                recommendation="Renew the SSL certificate immediately."
+                                recommendation="Renew the SSL certificate immediately.",
+                                owasp_refs=["A02:2021-Cryptographic Failures"]
                             ))
                         elif days_left < 30:
                             findings.append(Finding(
@@ -80,7 +82,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
                                 severity="medium",
                                 category="tls",
                                 description=f"The SSL certificate will expire in {days_left} days ({not_after}).",
-                                recommendation="Renew the SSL certificate soon."
+                                recommendation="Renew the SSL certificate soon.",
+                                owasp_refs=["A02:2021-Cryptographic Failures"]
                             ))
 
     except Exception as e:
