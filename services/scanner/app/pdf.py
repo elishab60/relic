@@ -144,245 +144,280 @@ def get_severity_color(severity):
     if s == 'low': return colors.HexColor('#16A34A') # Green 600
     return colors.gray
 
+def clean_text(text: str) -> str:
+    """Cleans text to remove unsupported characters for Helvetica."""
+    if not text: return ""
+    return text.replace('\u2011', '-').replace('\u2013', '-').replace('\u2014', '-').replace('’', "'").replace('“', '"').replace('”', '"')
+
+def draw_gradient_header(c, x, y, width, height, start_color, end_color):
+    """Draws a vertical linear gradient."""
+    # Interpolate between start_color and end_color
+    r1, g1, b1 = start_color.red, start_color.green, start_color.blue
+    r2, g2, b2 = end_color.red, end_color.green, end_color.blue
+    
+    steps = int(height)
+    for i in range(steps):
+        ratio = i / steps
+        r = r1 + (r2 - r1) * ratio
+        g = g1 + (g2 - g1) * ratio
+        b = b1 + (b2 - b1) * ratio
+        c.setFillColor(colors.Color(r, g, b))
+        c.rect(x, y + i, width, 1.5, fill=1, stroke=0)
+
+def draw_circular_score(c, x, y, score, grade, radius=30):
+    """Draws a circular gauge for the score."""
+    # Background circle (dim)
+    c.setLineWidth(4)
+    c.setStrokeColor(colors.HexColor('#334155')) # Slate 700
+    c.circle(x, y, radius, stroke=1, fill=0)
+    
+    # Foreground arc (progress)
+    # 0 degrees is 3 o'clock, goes counter-clockwise
+    # We want to start at 12 o'clock (90 deg) and go clockwise (negative angle)
+    
+    # Calculate color based on score
+    if score >= 80: score_color = colors.HexColor('#10B981') # Emerald 500
+    elif score >= 60: score_color = colors.HexColor('#F59E0B') # Amber 500
+    else: score_color = colors.HexColor('#EF4444') # Red 500
+    
+    c.setStrokeColor(score_color)
+    # Extent is proportional to score (360 * score / 100)
+    extent = -3.6 * score
+    # Start at 90 (top)
+    c.arc(x - radius, y - radius, x + radius, y + radius, 90, extent)
+    
+    # Grade in center
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 28)
+    # Center text adjustment
+    text_width = c.stringWidth(grade, "Helvetica-Bold", 28)
+    # Moved up slightly (y - 8 instead of y - 10)
+    c.drawString(x - (text_width / 2), y - 8, grade)
+    
+    # Score below grade
+    c.setFont("Helvetica", 10)
+    c.setFillColor(colors.HexColor('#94A3B8')) # Slate 400
+    c.drawCentredString(x, y - 22, f"{score}/100")
+
 def generate_ai_pdf(scan_result: ScanResult, ai_summary: dict) -> bytes:
     """Generates a professional one-page AI security report."""
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
     
-    # Colors
-    primary_color = colors.HexColor('#0F172A') # Slate 900
-    accent_color = colors.HexColor('#10B981') # Emerald 500
-    text_color = colors.HexColor('#334155') # Slate 700
-    light_bg = colors.HexColor('#F8FAFC') # Slate 50
-    border_color = colors.HexColor('#E2E8F0') # Slate 200
+    # --- Professional Palette (Blue/Purple SaaS Theme) ---
+    col_header_start = colors.HexColor('#1e1b4b') # Indigo 950
+    col_header_end = colors.HexColor('#4c1d95')   # Violet 900
     
-    # Margins - Reduced to use more space
+    col_bg_card = colors.HexColor('#FFFFFF')   # White (Cards)
+    col_text_main = colors.HexColor('#0f172a') # Slate 900
+    col_text_light = colors.HexColor('#475569')# Slate 600
+    col_border = colors.HexColor('#E2E8F0')    # Slate 200
+    col_accent = colors.HexColor('#6366f1')    # Indigo 500
+    
+    # Margins
     margin_x = 30
     content_width = width - (2 * margin_x)
     
-    y = height - 40
+    # --- 1. HEADER (Gradient) ---
+    header_height = 110
+    # Draw gradient from bottom to top of header
+    draw_gradient_header(c, 0, height - header_height, width, header_height, col_header_end, col_header_start)
     
-    # Styles for Justified Text
-    styles = getSampleStyleSheet()
+    y = height - 35
     
-    # Executive Summary Style
-    summary_style = ParagraphStyle(
-        'Summary',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=10,
-        leading=14,
-        textColor=text_color,
-        alignment=TA_JUSTIFY
-    )
-
-    # Finding Description Style
-    finding_style = ParagraphStyle(
-        'Finding',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=12,
-        textColor=text_color,
-        alignment=TA_JUSTIFY
-    )
+    # Logo / Title Area
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 22)
+    c.drawString(margin_x, y, "Rapport d'Audit de Sécurité")
     
-    # --- 1. HEADER SIMPLE ---
-    # Left: Target & Date
-    c.setFillColor(primary_color)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(margin_x, y, f"{scan_result.target}")
+    y -= 25
+    c.setFont("Helvetica", 12)
+    c.setFillColor(colors.HexColor('#cbd5e1')) # Slate 300
+    c.drawString(margin_x, y, f"Cible : {scan_result.target}")
+    y -= 18
+    c.drawString(margin_x, y, f"Date : {scan_result.timestamp.strftime('%Y-%m-%d %H:%M')}")
     
-    c.setFont("Helvetica", 10)
-    c.setFillColor(colors.gray)
-    c.drawString(margin_x, y - 15, f"Rapport du {scan_result.timestamp.strftime('%Y-%m-%d')}")
-    
-    # Right: Risk Level
-    score_letter = ai_summary.get("global_score", {}).get("letter", "?")
+    # Score Gauge (Right side of header)
     score_num = ai_summary.get("global_score", {}).get("numeric", 0)
-    risk = ai_summary.get("overall_risk_level", "Unknown")
+    score_letter = ai_summary.get("global_score", {}).get("letter", "?")
     
-    # Align right
-    right_x = width - margin_x
+    draw_circular_score(c, width - 60, height - 55, score_num, score_letter)
     
-    c.setFillColor(primary_color)
-    c.setFont("Helvetica-Bold", 24)
-    c.drawRightString(right_x, y, score_letter)
+    # Reset Y for content
+    y = height - header_height - 25
     
-    c.setFont("Helvetica", 10)
-    c.setFillColor(text_color)
-    c.drawRightString(right_x, y - 15, f"{score_num}/100")
+    # Styles
+    styles = getSampleStyleSheet()
+    summary_style = ParagraphStyle(
+        'Summary', parent=styles['Normal'], fontName='Helvetica', fontSize=10, 
+        leading=14, textColor=col_text_main, alignment=TA_JUSTIFY
+    )
+    finding_style = ParagraphStyle(
+        'Finding', parent=styles['Normal'], fontName='Helvetica', fontSize=9, 
+        leading=12, textColor=col_text_main, alignment=TA_JUSTIFY
+    )
     
-    c.setFont("Helvetica-Bold", 10)
-    risk_color = get_severity_color('critical') if risk.lower() in ['critique', 'critical'] else \
-                 get_severity_color('high') if risk.lower() in ['élevé', 'high'] else \
-                 get_severity_color('medium') if risk.lower() in ['moyen', 'medium'] else \
-                 get_severity_color('low')
-    c.setFillColor(risk_color)
-    c.drawRightString(right_x - 40, y - 8, risk.upper())
-    
-    y -= 30
-    
-    # --- 2. BARRE DE SÉPARATION ---
-    c.setStrokeColor(border_color)
-    c.setLineWidth(1)
-    c.line(margin_x, y, width - margin_x, y)
-    y -= 30
-    
-    # --- 3. SYNTHÈSE EXÉCUTIVE ---
-    c.setFillColor(primary_color)
-    c.setFont("Helvetica-Bold", 14)
+    # --- 2. SYNTHÈSE EXÉCUTIVE ---
+    c.setFillColor(col_text_main)
+    c.setFont("Helvetica-Bold", 16)
     c.drawString(margin_x, y, "Synthèse Exécutive")
+    y -= 8
+    
+    # Draw line
+    c.setStrokeColor(col_accent)
+    c.setLineWidth(3)
+    c.line(margin_x, y, margin_x + 40, y) # Accent line
     y -= 20
     
-    exec_summary = ai_summary.get("executive_summary", "No summary provided.")
-    # Use draw_paragraph for justified text
-    y = draw_paragraph(c, exec_summary, margin_x, y, content_width, style=summary_style)
-    y -= 30
+    exec_summary = clean_text(ai_summary.get("executive_summary", "No summary provided."))
     
-    # --- 4. TOP VULNÉRABILITÉS ---
-    c.setFillColor(primary_color)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(margin_x, y, "Top des vulnérabilités")
+    # Background for summary
+    p_summary = Paragraph(exec_summary, summary_style)
+    w_sum, h_sum = p_summary.wrap(content_width - 20, 1000)
+    
+    c.setFillColor(colors.HexColor('#f8fafc')) # Slate 50
+    c.setStrokeColor(col_border)
+    c.setLineWidth(1)
+    c.roundRect(margin_x, y - h_sum - 20, content_width, h_sum + 20, 6, fill=1, stroke=1)
+    
+    p_summary.drawOn(c, margin_x + 10, y - 10 - h_sum)
+    y -= (h_sum + 45)
+    
+    # --- 3. TOP VULNÉRABILITÉS ---
+    c.setFillColor(col_text_main)
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(margin_x, y, "Vulnérabilités Critiques")
+    y -= 8
+    c.setStrokeColor(col_accent)
+    c.setLineWidth(3)
+    c.line(margin_x, y, margin_x + 40, y)
     y -= 20
     
     top_vulns = ai_summary.get("key_vulnerabilities", [])
     if not top_vulns:
-        # Fallback
         top_vulns = ai_summary.get("top_3_vulnerabilities", [])
         
     if not top_vulns:
         c.setFont("Helvetica-Oblique", 10)
-        c.setFillColor(colors.gray)
+        c.setFillColor(col_text_light)
         c.drawString(margin_x, y, "Aucune vulnérabilité critique détectée.")
         y -= 20
         
     for vuln in top_vulns[:3]:
-        # Calculate dynamic height based on text content
-        # We need to simulate wrapping to guess height
-        expl = vuln.get("explanation_simple", "")
-        fix = vuln.get("fix_recommendation", "")
+        expl = clean_text(vuln.get("explanation_simple", ""))
+        fix = clean_text(vuln.get("fix_recommendation", ""))
         
-        # Approximate height calculation is tricky with Paragraph.
-        # Let's use a fixed height for now but make it generous, or calculate it.
-        # Better: Calculate height using wrap
+        # Prepare Paragraphs
         p_expl = Paragraph(expl, finding_style)
-        w_expl, h_expl = p_expl.wrap(content_width - 30, 1000)
+        w_expl, h_expl = p_expl.wrap(content_width - 40, 1000)
         
-        # Fix style (bold prefix, normal text)
-        # We can construct a single paragraph for fix: "<b>Correction :</b> text"
-        fix_text = f"<b>Correction :</b> {fix}"
+        fix_text = f"<font color='#10B981'><b>Correction :</b></font> {fix}"
         p_fix = Paragraph(fix_text, finding_style)
-        w_fix, h_fix = p_fix.wrap(content_width - 30, 1000)
+        w_fix, h_fix = p_fix.wrap(content_width - 40, 1000)
         
-        card_height = h_expl + h_fix + 45 # Padding + Title
+        card_height = h_expl + h_fix + 50
         
-        # Check page break
-        if y - card_height < 50:
+        # Check page break - aggressive check to keep on one page if possible
+        # If we are very low, we must break
+        if y - card_height < 40:
             c.showPage()
             y = height - 50
         
-        c.setStrokeColor(border_color)
-        c.setFillColor(colors.white)
-        c.roundRect(margin_x, y - card_height, content_width, card_height, 4, fill=1, stroke=1)
+        # Card Background
+        c.setFillColor(col_bg_card)
+        c.setStrokeColor(col_border)
+        c.setLineWidth(1)
+        c.roundRect(margin_x, y - card_height, content_width, card_height, 6, fill=1, stroke=1)
         
-        # Severity Badge (Left side of card)
+        # Severity Bar
         sev = vuln.get("severity", "low")
         sev_col = get_severity_color(sev)
-        
-        # Draw colored bar on left
         c.setFillColor(sev_col)
-        c.rect(margin_x, y - card_height, 4, card_height, fill=1, stroke=0)
+        c.rect(margin_x, y - card_height, 6, card_height, fill=1, stroke=0)
         
         # Title
-        c.setFillColor(primary_color)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(margin_x + 15, y - 15, vuln.get("title", "Untitled"))
+        c.setFillColor(col_text_main)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(margin_x + 20, y - 18, clean_text(vuln.get("title", "Untitled")))
         
-        # Severity Text
+        # Severity Badge (Right)
         c.setFillColor(sev_col)
-        c.setFont("Helvetica-Bold", 8)
-        c.drawString(margin_x + content_width - 50, y - 15, sev.upper())
+        c.setFont("Helvetica-Bold", 9)
+        sev_text = sev.upper()
+        c.drawRightString(margin_x + content_width - 15, y - 18, sev_text)
         
-        # Explanation (Justified)
-        p_expl.drawOn(c, margin_x + 15, y - 25 - h_expl)
+        # Content
+        p_expl.drawOn(c, margin_x + 20, y - 28 - h_expl)
+        p_fix.drawOn(c, margin_x + 20, y - 28 - h_expl - 8 - h_fix)
         
-        # Fix (Justified)
-        # Draw below explanation
-        p_fix.drawOn(c, margin_x + 15, y - 25 - h_expl - 10 - h_fix)
+        y -= (card_height + 12)
         
-        y -= (card_height + 15)
-        
-    y -= 10
+    y -= 5
     
-    # --- 5. BAS DE PAGE : INFRASTRUCTURE & CARTE DU SITE ---
-    # Check space
-    if y < 150:
+    # --- 4. INFRASTRUCTURE & SITE MAP ---
+    # Try to fit on same page if space permits (need ~120px)
+    if y < 120:
         c.showPage()
         y = height - 50
-
-    # Two columns
-    col_width = (content_width / 2) - 10
-    left_col_x = margin_x
-    right_col_x = margin_x + col_width + 20
+        
+    # Container for bottom section
+    container_height = 120
+    c.setFillColor(colors.HexColor('#f1f5f9')) # Slate 100
+    c.setStrokeColor(colors.HexColor('#e2e8f0'))
+    c.roundRect(margin_x, y - container_height, content_width, container_height, 6, fill=1, stroke=0)
     
-    # Save Y to align columns
-    start_y = y
+    # Columns
+    col_width = (content_width / 2) - 20
+    left_x = margin_x + 15
+    right_x = margin_x + col_width + 30
     
-    # LEFT: Infrastructure
-    c.setFillColor(primary_color)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(left_col_x, y, "Infrastructure détectée")
-    y -= 20
+    curr_y = y - 20
+    
+    # Left: Infra
+    c.setFillColor(col_text_main)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(left_x, curr_y, "Infrastructure")
+    curr_y -= 18
     
     infra = ai_summary.get("infrastructure", {})
     infra_items = [
         ("Hébergeur", infra.get('hosting_provider') or 'N/A'),
         ("IP", infra.get('ip') or 'N/A'),
-        ("Certificat TLS", infra.get('tls_issuer') or 'N/A'),
+        ("Certificat", infra.get('tls_issuer') or 'N/A'),
         ("Serveur", infra.get('server_header') or 'N/A')
     ]
     
     for label, value in infra_items:
         c.setFont("Helvetica-Bold", 9)
-        c.setFillColor(colors.gray)
-        c.drawString(left_col_x, y, label + ":")
-        
+        c.setFillColor(col_text_light)
+        c.drawString(left_x, curr_y, label)
         c.setFont("Helvetica", 9)
-        c.setFillColor(primary_color)
-        c.drawString(left_col_x + 70, y, value[:30])
-        y -= 15
+        c.setFillColor(col_text_main)
+        c.drawRightString(left_x + col_width, curr_y, clean_text(value[:25]))
+        curr_y -= 14
         
-    # RIGHT: Site Map
-    y = start_y # Reset Y for right column
-    c.setFillColor(primary_color)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(right_col_x, y, "Cartographie du site")
-    y -= 20
+    # Right: Site Map
+    curr_y = y - 20
+    c.setFillColor(col_text_main)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(right_x, curr_y, "Pages Découvertes")
+    curr_y -= 18
     
-    site_map = ai_summary.get("site_map", {})
-    pages = site_map.get("pages", [])
-    
+    pages = ai_summary.get("site_map", {}).get("pages", [])
     c.setFont("Helvetica", 9)
-    c.setFillColor(text_color)
+    c.setFillColor(col_text_main)
     
-    max_pages = 5
-    for i, page in enumerate(pages[:max_pages]):
-        # Truncate
-        display_url = page if len(page) < 55 else page[:52] + "..." # Increased truncate length due to wider page
-        c.drawString(right_col_x, y, f"- {display_url}")
-        y -= 14
+    for i, page in enumerate(pages[:5]):
+        display_url = page.replace("https://", "").replace("http://", "")
+        if len(display_url) > 35: display_url = display_url[:32] + "..."
+        c.drawString(right_x, curr_y, f"• {clean_text(display_url)}")
+        curr_y -= 14
         
-    if len(pages) > max_pages:
-        c.setFont("Helvetica-Oblique", 9)
-        c.setFillColor(colors.gray)
-        c.drawString(right_col_x, y, f"... et {len(pages) - max_pages} autres pages")
-        
-    # Footer Note
+    # Footer
     c.setFont("Helvetica", 8)
-    c.setFillColor(colors.gray)
-    c.drawCentredString(width/2, 30, "Généré par Relic v1.0.0 – Audit de Sécurité Automatisé")
+    c.setFillColor(col_text_light)
+    c.drawCentredString(width/2, 20, "Généré par Relic v1.0.0 – Audit de Sécurité Automatisé")
     
     c.save()
     buffer.seek(0)

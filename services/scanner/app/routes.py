@@ -85,7 +85,7 @@ DETAILED INSTRUCTIONS:
 
 3) executive_summary
 - MUST be in French.
-- 3 to 6 sentences max.
+- 5 to 8 sentences max.
 - Single paragraph.
 - It SHOULD mention, when relevant:
   - le score global,
@@ -103,7 +103,7 @@ DETAILED INSTRUCTIONS:
   - "title": reformule le titre pour qu’il soit clair et court.
   - "severity": low/medium/high/critical.
   - "area": zone impactée.
-  - "explanation_simple": explique en français, 1 à 3 phrases.
+  - "explanation_simple": explique en français, 2 à 4 phrases.
   - "fix_recommendation": action claire et concrète pour corriger.
 
 5) site_map
@@ -120,9 +120,9 @@ DETAILED INSTRUCTIONS:
 - "ip": Resolved IP address.
 
 LENGTH & STYLE CONSTRAINTS:
-- executive_summary: max 6 phrases.
-- explanation_simple: 1 to 3 sentences.
-- fix_recommendation: 1 to 3 sentences.
+- executive_summary: max 8 phrases.
+- explanation_simple: 2 to 4 sentences.
+- fix_recommendation: 2 to 4 sentences.
 - No bullet points, no markdown, no HTML.
 - Strictly in French.
 
