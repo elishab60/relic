@@ -249,7 +249,15 @@ async def scan_events(scan_id: str):
 
     # We need to update event_generator to work with DB or handle it differently
     # For now, pass the store function or similar
-    return StreamingResponse(event_generator(scan_id, store), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(scan_id, store),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @router.get("/scan/{scan_id}")
 async def get_scan_result(scan_id: str):
@@ -445,7 +453,15 @@ Analyze this data and provide the security report in the requested JSON format.
                 print(f"Error during streaming: {e}")
                 yield f"\n\n[ERROR] Stream interrupted: {str(e)}"
 
-        return StreamingResponse(stream_and_persist(), media_type="text/plain")
+        return StreamingResponse(
+            stream_and_persist(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
 
     except ValueError as e:
         # Likely missing API key or configuration

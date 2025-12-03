@@ -45,4 +45,4 @@ async def event_generator(scan_id: str, store) -> AsyncGenerator[str, None]:
             yield f"event: done\ndata: {json.dumps({'scan_id': scan_id, 'status': status})}\n\n"
             break
             
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)

@@ -37,6 +37,8 @@ class ScanEngine:
             logs.append(entry)
             if log_callback:
                 await log_callback(entry)
+            # Force yield to allow SSE to pick up the log immediately
+            await asyncio.sleep(0)
 
         # Initialize HttpClient with logger
         async def http_log_adapter(level: str, msg: str):

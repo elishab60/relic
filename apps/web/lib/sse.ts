@@ -11,7 +11,8 @@ export function useScanLogs(scanId: string | null) {
         setLogs([]);
         setStatus("running");
 
-        const eventSource = new EventSource(`/api/scan/${scanId}/events`);
+        // Direct connection to backend to avoid Next.js proxy buffering
+        const eventSource = new EventSource(`http://localhost:8000/scan/${scanId}/events`);
 
         eventSource.onmessage = (event) => {
             // Keep alive or generic messages
