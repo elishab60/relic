@@ -35,7 +35,7 @@ class Settings(BaseModel):
     # AI Settings
     OPENROUTER_API_KEY: str = Field(default="", description="OpenRouter API Key")
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", description="Ollama Base URL")
-    OLLAMA_MODEL: str = Field(default="Llama3.2:3b", description="Ollama Model Name")
+    OLLAMA_MODEL: str = Field(default="gpt-oss:20b", description="Ollama Model Name")
     OPENROUTER_MODEL: str = Field(default="x-ai/grok-4.1-fast:free", description="OpenRouter Model Name")
 
     @classmethod
