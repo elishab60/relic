@@ -88,9 +88,40 @@ Le cœur technique (`services/scanner`) implémente les vérifications suivantes
     *   Top 3 des vulnérabilités avec explications vulgarisées et techniques.
     *   Recommandations de remédiation concrètes.
 
+*   **Extensible par design** : Ajout facile de nouveaux modules de scan et de règles de détection grâce à une architecture modulaire.
+
 ---
 
-### Couverture OWASP 2021
+## Mise à jour de la base de vulnérabilités
+
+La base de vulnérabilités de Relic n’est pas figée : elle est conçue comme un ensemble de règles techniques modulaires qui peuvent être enrichies progressivement en fonction du contexte métier et des nouveaux besoins de sécurité.
+
+Les règles sont définies programmatiquement dans le dossier `services/scanner/app/scanner/` :
+- **Logique de détection** : `vuln_checks.py` contient les fonctions de vérification (ex: `check_xss_url`, `check_sqli_url`).
+- **Payloads & Signatures** : Les listes de payloads (XSS, SQLi) et les signatures d'erreurs sont gérées dans des modules dédiés (ex: `xss_detector.py`) ou directement dans les fonctions de check.
+
+**Pour ajouter une nouvelle règle :**
+1.  **Créer ou modifier** une fonction de check dans `vuln_checks.py`.
+2.  **Définir les payloads** ou les patterns à détecter (ex: ajout d'une nouvelle signature de fichier sensible).
+3.  **Enregistrer la vérification** dans l'orchestrateur `engine.py` pour qu'elle soit exécutée lors du scan.
+4.  **Versionner** simplement les changements via Git pour mettre à jour la base de connaissances de l'équipe.
+
+---
+
+## Extensibilité des scans & modes agressifs
+
+Relic est structuré pour permettre l'ajout de nouveaux modules de scan sans altérer le cœur du système.
+
+- **Architecture Modulaire** : Chaque scanner est un module indépendant ou une fonction asynchrone invoquée par le `ScanEngine`.
+- **Modes Agressifs (Optionnels)** :
+    - L'architecture permet l'intégration de scans plus offensifs (fuzzing intense, bruteforce de répertoires, scan de ports complet).
+    - Ces modes doivent être activés explicitement (via des flags futurs) pour éviter de perturber les services en production.
+
+> **Note** : Par défaut, Relic privilégie des scans non destructifs et raisonnables, adaptés à un contexte d’audit de sécurité sur des environnements de production, avec la possibilité d’activer des modes plus intrusifs dans un cadre légal et contrôlé.
+
+---
+
+## Couverture OWASP 2021
 
 Relic n'est pas un audit de sécurité exhaustif, mais son moteur s'aligne sur plusieurs catégories critiques de l'**OWASP Top 10 2021** pour détecter les failles les plus courantes :
 
@@ -105,7 +136,9 @@ Relic n'est pas un audit de sécurité exhaustif, mais son moteur s'aligne sur p
 
 > **Note** : La couverture est partielle et optimisée pour la démonstration et l'éducation.
 
-### Tech Stack
+---
+
+## Tech Stack
 
 Le projet repose sur une pile technique moderne et robuste :
 
@@ -204,6 +237,30 @@ L'utilisation d'Ollama en local dépend fortement de votre GPU/RAM. Voici un gui
 
 ---
 
+## Roadmap & futures évolutions
+
+Voici les fonctionnalités prévues pour les prochaines versions de Relic, visant à en faire un outil d'audit encore plus complet :
+
+-   **Couverture OWASP élargie**
+    > Étendre la couverture des tests pour couvrir davantage de catégories OWASP Top 10 (authentification, gestion de session, validation des entrées côté serveur, etc.).
+
+-   **Scans authentifiés**
+    > Support de sessions authentifiées (cookies, tokens, headers personnalisés) pour tester des parties de l'application non accessibles en anonyme.
+
+-   **Intégration de scanners externes**
+    > Intégration optionnelle avec des outils comme `nmap` ou d'autres scanners réseau pour enrichir la cartographie de l'attaque.
+
+-   **Modes de scan avancés**
+    > Modes "rapide", "standard" et "profond", avec différents niveaux de granularité et de charge sur la cible.
+
+-   **Planification & historique**
+    > Ajout d'une planification de scans (scheduler) et d'un historique consultable (via la WebApp ou des fichiers JSON/rapports stockés).
+
+-   **API & intégration CI/CD**
+    > Exposition d'une API ou d'une interface CLI plus complète pour intégrer Relic dans des pipelines CI/CD de sécurité.
+
+---
+
 ## Limites Connues
 
 Ce projet est un prototype avancé, mais il a ses limites par rapport à des outils commerciaux :
@@ -228,3 +285,9 @@ Pour valider l'outil, j'ai effectué des tests sur des environnements contrôlé
     ![Rapport WebTech 104](assets/report_webtech_104.png)
 
 > **Note** : Cet outil a été testé exclusivement sur mes propres infrastructures et sur des projets open-source autorisés. Aucune cible non autorisée n'a été scannée durant le développement.
+
+---
+
+## Avertissement Légal
+
+Relic est un outil de sécurité offensive destiné à des fins éducatives et d'audit légitime. L'utilisateur est seul responsable de l'utilisation de cet outil. Il est strictement interdit d'utiliser Relic sur des cibles sans l'autorisation explicite de leur propriétaire.
