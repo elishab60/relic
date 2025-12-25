@@ -1,28 +1,91 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
+    --background: 0 0% 5%;
+    --foreground: 180 25% 50%;
   }
 }
 
 body {
   @apply bg-terminal-bg text-terminal-text font-mono antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
+/* Selection style */
+::selection {
+  @apply bg-terminal-accent/30 text-terminal-textBright;
 }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
 ::-webkit-scrollbar-track {
   @apply bg-terminal-bg;
 }
+
 ::-webkit-scrollbar-thumb {
-  @apply bg-terminal-border rounded;
+  @apply bg-terminal-border rounded-full;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-terminal-dim;
+  @apply bg-terminal-accent/50;
+}
+
+@layer components {
+
+  /* Pixel Title Style - RELIC logo */
+  .pixel-title {
+    font-family: 'Press Start 2P', monospace;
+    @apply text-terminal-red uppercase tracking-wider;
+  }
+
+  .terminal-box {
+    @apply bg-terminal-bgLight border border-terminal-border rounded;
+  }
+
+  .terminal-box-glow {
+    @apply terminal-box border-terminal-accent/30;
+  }
+
+  .cyber-button {
+    @apply bg-terminal-accent text-terminal-bg font-bold px-6 py-2 rounded transition-all duration-200;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .cyber-button:hover:not(:disabled) {
+    @apply bg-terminal-textBright;
+  }
+
+  .cyber-button-outline {
+    @apply border border-terminal-accent text-terminal-accent font-bold px-6 py-2 rounded transition-all duration-200;
+  }
+
+  .cyber-button-outline:hover {
+    @apply bg-terminal-accent/10;
+  }
+
+  .cyber-input {
+    @apply bg-terminal-bg border border-terminal-border rounded px-4 py-2 transition-all duration-200;
+    @apply text-terminal-text placeholder:text-terminal-dim;
+  }
+
+  .cyber-input:focus {
+    @apply outline-none border-terminal-accent;
+  }
+
+  /* Section title - same red as RELIC */
+  .section-title {
+    @apply text-terminal-red uppercase tracking-wider;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.55rem;
+  }
 }

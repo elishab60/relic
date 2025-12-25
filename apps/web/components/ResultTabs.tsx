@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScanResult } from '@/lib/types';
-import { Download, Bot, Code } from 'lucide-react';
+import { Bot, Code, AlertTriangle, Shield, Target } from 'lucide-react';
 import { getAiDebug } from '@/lib/api';
 import AiProviderToggle from './AiProviderToggle';
 import AiAnalysisSection from './AiAnalysisSection';
@@ -23,81 +23,122 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
 
     if (!result) return null;
 
+    const getSeverityClass = (severity: string) => {
+        const s = severity.toLowerCase();
+        if (s === 'critical' || s === 'high') return 'border-terminal-red text-terminal-red';
+        if (s === 'medium') return 'border-terminal-text text-terminal-text';
+        return 'border-terminal-dim text-terminal-dim';
+    };
+
+    const getGradeColor = (grade: string) => {
+        if (grade === 'A' || grade === 'B') return 'text-terminal-text';
+        if (grade === 'C') return 'text-terminal-text';
+        if (grade === 'N/A') return 'text-terminal-dim';
+        return 'text-terminal-red';
+    };
+
     return (
         <div className="flex flex-col gap-6">
             <AiProviderToggle selectedProvider={selectedProvider} onSelect={setSelectedProvider} />
 
+            {/* WAF Blocked Warning */}
             {result.scan_status === 'blocked' && (
-                <div className="bg-red-500/10 border border-red-500/50 p-4 rounded text-red-200">
-                    <div className="font-bold flex items-center gap-2">
-                        <span>🛡️ Scan status: BLOCKED BY WAF</span>
+                <div className="bg-terminal-red/10 border border-terminal-red/50 p-4 rounded flex items-start gap-3">
+                    <AlertTriangle className="text-terminal-red shrink-0 mt-0.5" size={20} />
+                    <div>
+                        <div className="font-bold text-terminal-red">BLOCKED BY WAF</div>
+                        <p className="text-sm mt-1 text-terminal-text opacity-90">
+                            Security mechanism detected ({result.blocking_mechanism || 'WAF'}).
+                        </p>
                     </div>
-                    <p className="text-sm mt-1 opacity-90">
-                        The scanner was blocked by a security mechanism ({result.blocking_mechanism || 'WAF'}).
-                        Only limited information is available. Results below may not reflect the actual security posture of the application.
-                    </p>
                 </div>
             )}
 
-            <div className="flex justify-between items-center bg-terminal-dim/10 p-4 rounded border border-terminal-border">
-                <div>
-                    <div className="text-sm text-terminal-dim">Target</div>
-                    <div className="text-xl font-bold">{result.target}</div>
+            {/* Target & Grade Header */}
+            <div className="flex justify-between items-center terminal-box-glow p-4">
+                <div className="flex items-center gap-3">
+                    <Target className="text-terminal-text" size={24} />
+                    <div>
+                        <div className="text-xs text-terminal-dim uppercase tracking-wider">Target</div>
+                        <div className="text-xl font-bold text-terminal-textBright">{result.target}</div>
+                    </div>
                 </div>
                 <div className="text-right">
-                    <div className="text-sm text-terminal-dim">Grade</div>
-                    <div className={`text-4xl font-bold ${result.grade === 'A' ? 'text-green-500' :
-                        result.grade === 'B' ? 'text-blue-500' :
-                            result.grade === 'C' ? 'text-yellow-500' :
-                                result.grade === 'N/A' ? 'text-gray-500' : 'text-red-500'
-                        }`}>{result.grade}</div>
+                    <div className="text-xs text-terminal-dim uppercase tracking-wider">Grade</div>
+                    <div className={`text-5xl font-bold ${getGradeColor(result.grade)}`}>
+                        {result.grade}
+                    </div>
                 </div>
             </div>
 
+            {/* Findings List */}
             <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-terminal-accent border-b border-terminal-border pb-2">Top Findings</h3>
-                {result.findings.map((finding, i) => (
-                    <div key={i} className="bg-terminal-dim/5 border border-terminal-border p-4 rounded hover:border-terminal-accent/50 transition-colors">
-                        <div className="flex justify-between mb-2">
-                            <span className="font-bold text-white">{finding.title}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded border ${finding.severity === 'High' ? 'border-red-500 text-red-500' :
-                                finding.severity === 'Medium' ? 'border-yellow-500 text-yellow-500' :
-                                    'border-blue-500 text-blue-500'
-                                }`}>{finding.severity}</span>
-                        </div>
-                        <p className="text-sm text-terminal-dim mb-2">{finding.impact}</p>
-                        <p className="text-xs text-terminal-accent">Rec: {finding.recommendation}</p>
+                <h3 className="section-title flex items-center gap-2">
+                    <Shield size={14} />
+                    FINDINGS
+                </h3>
+
+                {result.findings.length === 0 ? (
+                    <div className="text-terminal-dim italic p-4 terminal-box">
+                        <span className="text-terminal-text">[✓]</span> No critical vulnerabilities detected
                     </div>
-                ))}
+                ) : (
+                    result.findings.map((finding, i) => (
+                        <div
+                            key={i}
+                            className="terminal-box p-4 hover:border-terminal-accent/50 transition-all duration-200"
+                        >
+                            <div className="flex justify-between mb-2">
+                                <span className="font-bold text-terminal-textBright">
+                                    {finding.title}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded border font-bold uppercase ${getSeverityClass(finding.severity)}`}>
+                                    {finding.severity}
+                                </span>
+                            </div>
+                            <p className="text-sm text-terminal-dim mb-2">{finding.impact}</p>
+                            <p className="text-xs text-terminal-text">
+                                <span className="text-terminal-dim">▸ FIX:</span> {finding.recommendation}
+                            </p>
+                        </div>
+                    ))
+                )}
             </div>
 
+            {/* AI Analysis Section */}
             <AiAnalysisSection scanId={result.scan_id} provider={selectedProvider} />
 
-
+            {/* Debug Info */}
             {result.debug_info && (
                 <div className="space-y-4 pt-6 border-t border-terminal-border">
                     <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-terminal-accent">Debug Info</h3>
+                        <h3 className="section-title">DEBUG</h3>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setShowAiDebug(false)}
-                                className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 ${!showAiDebug ? 'bg-terminal-accent text-black' : 'bg-terminal-dim/20 text-terminal-dim hover:bg-terminal-dim/30'}`}
+                                className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${!showAiDebug
+                                        ? 'bg-terminal-accent text-terminal-bg'
+                                        : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
+                                    }`}
                             >
-                                <Code size={14} /> Raw JSON
+                                <Code size={14} /> JSON
                             </button>
                             <button
                                 onClick={() => setShowAiDebug(true)}
-                                className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 ${showAiDebug ? 'bg-terminal-accent text-black' : 'bg-terminal-dim/20 text-terminal-dim hover:bg-terminal-dim/30'}`}
+                                className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${showAiDebug
+                                        ? 'bg-terminal-accent text-terminal-bg'
+                                        : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
+                                    }`}
                             >
-                                <Bot size={14} /> AI View
+                                <Bot size={14} /> AI
                             </button>
                         </div>
                     </div>
 
-                    <div className="bg-terminal-dim/5 border border-terminal-border p-4 rounded overflow-x-auto relative">
+                    <div className="terminal-box p-4 overflow-x-auto relative">
                         {showAiDebug && loadingAi && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                                <span className="text-terminal-accent animate-pulse">Loading AI View...</span>
+                            <div className="absolute inset-0 flex items-center justify-center bg-terminal-bg/80 backdrop-blur-sm">
+                                <span className="text-terminal-text animate-pulse">Loading...</span>
                             </div>
                         )}
                         <pre className="text-xs text-terminal-dim font-mono">

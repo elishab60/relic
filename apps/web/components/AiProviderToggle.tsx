@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getAiProviderStatus } from '../lib/api';
+import { Cpu, Cloud } from 'lucide-react';
 
 interface ProviderStatus {
     available: boolean;
@@ -25,36 +26,49 @@ export default function AiProviderToggle({ selectedProvider, onSelect }: AiProvi
 
     const getStatusColor = (provider: string) => {
         if (loading) return "bg-terminal-dim";
-        return status[provider]?.available ? "bg-green-500" : "bg-red-500";
+        return status[provider]?.available ? "bg-terminal-text" : "bg-terminal-red";
     };
 
     const getStatusText = (provider: string) => {
-        if (loading) return "Checking...";
-        return status[provider]?.available ? "Connected" : "Unavailable";
+        if (loading) return "...";
+        return status[provider]?.available ? "ONLINE" : "OFFLINE";
     };
 
     return (
-        <div className="flex flex-col items-center gap-2 mb-6">
-            <div className="flex bg-terminal-dim/10 p-1 rounded-lg border border-terminal-border">
-                {['ollama', 'openrouter'].map((provider) => (
+        <div className="flex flex-col items-center gap-3 mb-4">
+            <div className="flex terminal-box p-1">
+                {[
+                    { id: 'ollama', label: 'Ollama', sub: 'Local', icon: Cpu },
+                    { id: 'openrouter', label: 'OpenRouter', sub: 'Cloud', icon: Cloud },
+                ].map(({ id, label, sub, icon: Icon }) => (
                     <button
-                        key={provider}
-                        onClick={() => onSelect(provider)}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${selectedProvider === provider
-                                ? 'bg-terminal-accent text-black shadow-lg shadow-terminal-accent/20'
-                                : 'text-terminal-dim hover:text-terminal-text'
+                        key={id}
+                        onClick={() => onSelect(id)}
+                        className={`px-4 py-2 rounded text-sm font-medium transition-all flex items-center gap-2 ${selectedProvider === id
+                                ? 'bg-terminal-accent text-terminal-bg'
+                                : 'text-terminal-dim hover:text-terminal-text hover:bg-terminal-border/30'
                             }`}
                     >
-                        {provider === 'ollama' ? 'Ollama (Local)' : 'OpenRouter (Cloud)'}
+                        <Icon size={16} />
+                        <span>{label}</span>
+                        <span className={`text-xs ${selectedProvider === id ? 'text-terminal-bg/70' : 'text-terminal-dim'
+                            }`}>
+                            ({sub})
+                        </span>
                     </button>
                 ))}
             </div>
 
-            <div className="flex gap-4 text-xs text-terminal-dim">
+            <div className="flex gap-6 text-xs text-terminal-dim font-mono">
                 {['ollama', 'openrouter'].map((provider) => (
-                    <div key={provider} className="flex items-center gap-1.5">
+                    <div key={provider} className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${getStatusColor(provider)}`} />
-                        <span className="capitalize">{provider}: {getStatusText(provider)}</span>
+                        <span className="uppercase tracking-wider">
+                            {provider}:
+                            <span className={status[provider]?.available ? 'text-terminal-text' : 'text-terminal-red'}>
+                                {' '}{getStatusText(provider)}
+                            </span>
+                        </span>
                     </div>
                 ))}
             </div>

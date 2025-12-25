@@ -9,16 +9,29 @@ const config: Config = {
         extend: {
             colors: {
                 terminal: {
-                    bg: "#0a0a0a",
-                    text: "#e5e5e5",
-                    accent: "#00ff9d",
-                    dim: "#404040",
-                    border: "#262626"
+                    // SANDEVISTAN Exact Palette
+                    bg: "#0c0c0c",           // Deep black background
+                    bgLight: "#141414",      // Slightly lighter for cards
+                    text: "#5f9ea0",         // Cadet blue/cyan - main text
+                    textBright: "#7ec8ca",   // Brighter cyan for highlights
+                    accent: "#5f9ea0",       // Same cyan for accents
+                    red: "#c94c4c",          // Coral/salmon red
+                    redBright: "#e05555",    // Brighter red
+                    dim: "#4a4a4a",          // Dark gray for secondary
+                    border: "#2a2a2a",       // Dark border
                 }
             },
             fontFamily: {
-                mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
-            }
+                mono: [
+                    "IBM Plex Mono",
+                    "Source Code Pro",
+                    "ui-monospace",
+                    "Menlo",
+                    "Monaco",
+                    "Consolas",
+                    "monospace"
+                ],
+            },
         },
     },
     plugins: [],

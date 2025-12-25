@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { generateAiAnalysis } from '../lib/api';
+import { Bot, Download, Zap, AlertCircle, FileText } from 'lucide-react';
 
 interface AiAnalysisSectionProps {
     scanId: string;
@@ -15,7 +16,6 @@ export default function AiAnalysisSection({ scanId, provider }: AiAnalysisSectio
     const handleDownloadPdf = async () => {
         setIsDownloading(true);
         try {
-            // Use the same provider as selected
             const url = new URL(`/api/scan/${scanId}/ai-report.pdf`, window.location.origin);
             if (provider) {
                 url.searchParams.append("provider", provider);
@@ -35,7 +35,7 @@ export default function AiAnalysisSection({ scanId, provider }: AiAnalysisSectio
             document.body.removeChild(a);
         } catch (e) {
             console.error(e);
-            alert("Failed to download PDF report. Please try again.");
+            alert("Failed to download PDF report.");
         } finally {
             setIsDownloading(false);
         }
@@ -58,7 +58,6 @@ export default function AiAnalysisSection({ scanId, provider }: AiAnalysisSectio
                 setStreamedText(prev => prev + chunk);
             });
             setAnalysis(result);
-            // Auto-download PDF on success
             await handleDownloadPdf();
         } catch (err: any) {
             setError(err.message || "Failed to generate analysis");
@@ -69,54 +68,62 @@ export default function AiAnalysisSection({ scanId, provider }: AiAnalysisSectio
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pt-6 border-t border-terminal-border">
             <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold text-terminal-accent">AI Security Analysis</h3>
+                <h3 className="section-title flex items-center gap-2">
+                    <Bot size={14} />
+                    AI ANALYSIS
+                </h3>
                 <div className="flex gap-3">
                     {analysis && (
                         <button
                             onClick={handleDownloadPdf}
                             disabled={isDownloading}
-                            className="px-4 py-2 bg-terminal-dim/20 text-terminal-accent border border-terminal-accent/50 font-bold rounded hover:bg-terminal-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="cyber-button-outline flex items-center gap-2 text-sm py-1.5 px-4"
                         >
-                            {isDownloading ? "Downloading..." : "Download PDF Report"}
+                            <Download size={14} />
+                            {isDownloading ? "..." : "PDF"}
                         </button>
                     )}
                     <button
                         onClick={handleGenerate}
                         disabled={loading}
-                        className="px-4 py-2 bg-terminal-accent text-black font-bold rounded hover:bg-terminal-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="cyber-button flex items-center gap-2 text-sm py-1.5 px-4"
                     >
-                        {loading ? "Generating..." : "Generate Analysis"}
+                        <Zap size={14} />
+                        {loading ? "ANALYZING..." : "GENERATE"}
                     </button>
                 </div>
             </div>
 
             {error && (
-                <div className="p-4 border border-red-500/50 bg-red-500/10 text-red-400 rounded">
-                    <p className="font-bold">Error: {error}</p>
-                    {(error.includes("Ollama") || error.includes("OpenRouter") || error.includes("connect") || error.includes("API key")) && (
-                        <div className="mt-2 text-sm text-red-300 opacity-80">
-                            <p className="font-semibold mb-1">Troubleshooting:</p>
-                            <ul className="list-disc list-inside ml-2 space-y-1">
-                                <li>If using <strong>Ollama</strong>, ensure it is running locally (e.g., <code>ollama serve</code>).</li>
-                                <li>If using <strong>OpenRouter</strong>, check that <code>OPENROUTER_API_KEY</code> is set in your <code>.env</code> file.</li>
-                            </ul>
+                <div className="terminal-box border-terminal-red/50 bg-terminal-red/5 p-4">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="text-terminal-red shrink-0 mt-0.5" size={18} />
+                        <div>
+                            <p className="font-bold text-terminal-red text-sm">ERROR: {error}</p>
+                            {(error.includes("Ollama") || error.includes("OpenRouter") || error.includes("connect") || error.includes("API key")) && (
+                                <div className="mt-2 text-xs text-terminal-dim">
+                                    <p>Check that Ollama is running or OpenRouter API key is configured.</p>
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
                 </div>
             )}
 
             {(analysis || streamedText) && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="bg-terminal-dim/5 border border-terminal-border p-4 rounded overflow-x-auto">
-                        <h4 className="text-sm uppercase tracking-wider text-terminal-dim mb-2">
-                            {analysis ? "Raw Analysis Result" : "Generating Analysis..."}
-                        </h4>
-                        <pre className="text-xs text-terminal-text font-mono whitespace-pre-wrap">
-                            {analysis ? JSON.stringify(analysis, null, 2) : streamedText}
-                        </pre>
+                <div className="terminal-box p-4 overflow-x-auto">
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-terminal-border">
+                        <FileText size={14} className="text-terminal-text" />
+                        <span className="text-xs uppercase tracking-wider text-terminal-dim">
+                            {analysis ? "Complete" : "Generating..."}
+                        </span>
+                        {loading && <span className="text-terminal-text animate-pulse ml-auto">▌</span>}
                     </div>
+                    <pre className="text-xs text-terminal-text font-mono whitespace-pre-wrap">
+                        {analysis ? JSON.stringify(analysis, null, 2) : streamedText}
+                    </pre>
                 </div>
             )}
         </div>

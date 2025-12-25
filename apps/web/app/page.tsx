@@ -1,23 +1,25 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import TerminalShell from '@/components/TerminalShell';
 import LogConsole from '@/components/LogConsole';
 import ResultTabs from '@/components/ResultTabs';
+import BootAnimation from '@/components/BootAnimation';
+import AsciiAnimation from '@/components/AsciiAnimation';
 import { useScanLogs } from '@/lib/sse';
 import { startScan, getResult } from '@/lib/api';
 import { ScanResult } from '@/lib/types';
-import { Shield, Play, Loader2 } from 'lucide-react';
+import { Shield, Play, Loader2, Terminal } from 'lucide-react';
 
 export default function Page() {
+    const [booting, setBooting] = useState(true);
     const [target, setTarget] = useState('');
     const [scanId, setScanId] = useState<string | null>(null);
     const [result, setResult] = useState<ScanResult | null>(null);
 
     const { logs, status } = useScanLogs(scanId);
 
-    // Poll for result when done
-    React.useEffect(() => {
+    useEffect(() => {
         if (status === 'done' && scanId && !result) {
             getResult(scanId).then(setResult);
         }
@@ -36,49 +38,67 @@ export default function Page() {
         }
     };
 
+    // Show boot animation on first load
+    if (booting) {
+        return <BootAnimation onComplete={() => setBooting(false)} />;
+    }
+
     return (
         <TerminalShell>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
                 <div className="flex flex-col gap-6">
-                    <div className="bg-terminal-dim/10 p-6 rounded-lg border border-terminal-border">
-                        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                            <Shield className="text-terminal-accent" size={20} />
-                            New Security Scan
+                    {/* Scan Input Section */}
+                    <div className="terminal-box-glow p-6">
+                        <h2 className="section-title mb-4 flex items-center gap-3">
+                            <Shield className="text-terminal-red" size={14} />
+                            TARGET
                         </h2>
+
                         <form onSubmit={handleStart} className="flex gap-4">
-                            <input
-                                type="text"
-                                placeholder="Enter target (e.g., localhost)"
-                                className="flex-1 bg-black border border-terminal-border rounded px-4 py-2 focus:outline-none focus:border-terminal-accent text-white placeholder:text-terminal-dim"
-                                value={target}
-                                onChange={(e) => setTarget(e.target.value)}
-                                disabled={status === 'running'}
-                            />
+                            <div className="flex-1 relative">
+                                <input
+                                    type="text"
+                                    placeholder="Enter target (e.g., localhost:3000)"
+                                    className="cyber-input w-full pl-10"
+                                    value={target}
+                                    onChange={(e) => setTarget(e.target.value)}
+                                    disabled={status === 'running'}
+                                />
+                                <Terminal
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-dim"
+                                    size={16}
+                                />
+                            </div>
                             <button
                                 type="submit"
                                 disabled={status === 'running' || !target}
-                                className="bg-terminal-accent text-black font-bold px-6 py-2 rounded hover:bg-terminal-accent/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                className="cyber-button flex items-center gap-2"
                             >
-                                {status === 'running' ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}
-                                SCAN
+                                {status === 'running' ? (
+                                    <Loader2 className="animate-spin" size={18} />
+                                ) : (
+                                    <Play size={18} />
+                                )}
+                                <span className="uppercase tracking-wider">SCAN</span>
                             </button>
                         </form>
                     </div>
 
+                    {/* Logs Section */}
                     <div className="flex-1 flex flex-col">
-                        <h3 className="text-sm text-terminal-dim mb-2 uppercase tracking-wider">Live Operation Logs</h3>
+                        <h3 className="section-title mb-3">
+                            LOGS
+                        </h3>
                         <LogConsole logs={logs} />
                     </div>
                 </div>
 
-                <div className="bg-terminal-dim/5 rounded-lg border border-terminal-border p-6 min-h-[500px]">
+                {/* Results Section */}
+                <div className="terminal-box p-6 min-h-[500px]">
                     {result ? (
                         <ResultTabs result={result} />
                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-terminal-dim gap-4">
-                            <Shield size={48} className="opacity-20" />
-                            <p>Ready to audit. Enter a target to begin.</p>
-                        </div>
+                        <AsciiAnimation isScanning={status === 'running'} />
                     )}
                 </div>
             </div>
