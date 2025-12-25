@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Tuple
 from .models import Finding
 from .http_client import HttpClient
+from ..constants import Severity, Category
 
 async def check_cors(target_url: str, initial_headers: Dict[str, str], http_client: HttpClient, log_callback, cookies_present: bool = False) -> Tuple[List[Finding], Dict[str, Any]]:
     """
@@ -23,16 +24,16 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
     credentials_true = allow_credentials and allow_credentials.lower() == "true"
     
     # Determine risk context
-    risk_level = "info"
+    risk_level = Severity.INFO
     if allow_origin == "*":
         if credentials_true and cookies_present:
-            risk_level = "high"
+            risk_level = Severity.HIGH
         elif credentials_true:
-            risk_level = "medium" # Credentials allowed but no cookies found (maybe auth via header?)
+            risk_level = Severity.MEDIUM
         elif cookies_present:
-            risk_level = "low" # Wildcard but no credentials, though cookies exist (maybe session riding risk if logic flawed?)
+            risk_level = Severity.LOW
         else:
-            risk_level = "info" # Wildcard, no creds, no cookies (likely public API)
+            risk_level = Severity.INFO
             
     cors_info["context"] = {
         "cookies_present": cookies_present,
@@ -42,13 +43,11 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
     
     # 1. Passive Analysis
     if allow_origin == "*" and credentials_true:
-        # This is technically invalid per spec (wildcard + creds), but some browsers might support it or server is confused.
-        # If it works, it's critical.
-        severity = "high" if cookies_present else "medium"
+        severity = Severity.HIGH if cookies_present else Severity.MEDIUM
         findings.append(Finding(
             title="Dangerous CORS: Wildcard Origin with Credentials",
             severity=severity,
-            category="cors",
+            category=Category.CORS,
             description="The server allows access from any origin ('*') while also allowing credentials. This is a critical security risk if authentication cookies are used.",
             recommendation="Restrict 'Access-Control-Allow-Origin' to a whitelist of trusted domains.",
             evidence=f"Access-Control-Allow-Origin: *\nAccess-Control-Allow-Credentials: true\nContext: Cookies Present={cookies_present}"
@@ -56,20 +55,19 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
         cors_info["notes"].append("Passive: Wildcard + Credentials detected.")
         
     elif allow_origin == "*":
-        # Wildcard without credentials
-        severity = "info"
+        severity = Severity.INFO
         desc = "The server allows access from any origin ('*')."
         
         if not cookies_present and not credentials_true:
             desc += " No cookies or credentials detected, so this is likely a public API or static content. Risk is low."
         else:
-            severity = "low"
+            severity = Severity.LOW
             desc += " This is acceptable for public APIs but risky for internal services."
 
         findings.append(Finding(
             title="Permissive CORS: Wildcard Origin",
             severity=severity,
-            category="cors",
+            category=Category.CORS,
             description=desc,
             recommendation="Ensure this is intended for a public API. Otherwise, restrict origins.",
             evidence=f"Access-Control-Allow-Origin: *\nContext: Cookies Present={cookies_present}, Credentials Allowed={credentials_true}"
@@ -98,19 +96,19 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
         cors_info["probes"].append(probe_result)
         
         if resp_origin == evil_origin:
-            severity = "medium"
+            severity = Severity.MEDIUM
             title = "CORS Misconfiguration: Origin Reflection"
             desc = f"The server reflects the arbitrary origin '{evil_origin}' in 'Access-Control-Allow-Origin'."
             
             if resp_creds and resp_creds.lower() == "true":
-                severity = "high"
+                severity = Severity.HIGH
                 title = "Dangerous CORS: Origin Reflection with Credentials"
                 desc += " It also allows credentials, which is a critical risk."
             
             findings.append(Finding(
                 title=title,
                 severity=severity,
-                category="cors",
+                category=Category.CORS,
                 description=desc,
                 recommendation="Validate the 'Origin' header against a whitelist before reflecting it.",
                 evidence=f"Sent Origin: {evil_origin}\nReceived ACAO: {resp_origin}\nACAC: {resp_creds}"
@@ -138,8 +136,8 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
         if resp_origin == null_origin and resp_creds and resp_creds.lower() == "true":
              findings.append(Finding(
                 title="Dangerous CORS: Null Origin with Credentials",
-                severity="high",
-                category="cors",
+                severity=Severity.HIGH,
+                category=Category.CORS,
                 description="The server allows the 'null' origin with credentials. This can be exploited via sandboxed iframes.",
                 recommendation="Do not allow 'null' origin with credentials.",
                 evidence=f"Sent Origin: null\nReceived ACAO: null\nACAC: true"

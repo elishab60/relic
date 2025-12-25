@@ -1,8 +1,9 @@
 import ssl
 import socket
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Dict, Any
+from typing import List, Optional, Dict, Any
 from .models import Finding
+from ..constants import Severity, Category
 
 def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[Dict[str, Any]]]:
     """
@@ -12,11 +13,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
     findings = []
     cert_info = None
     
-
-    
     try:
         # Configure SSL context to allow optional certificates for broader compatibility
-        
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_OPTIONAL
@@ -29,8 +27,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
                 if version in ["TLSv1", "TLSv1.1"]:
                     findings.append(Finding(
                         title="Obsolete TLS Protocol",
-                        severity="medium",
-                        category="tls",
+                        severity=Severity.MEDIUM,
+                        category=Category.TLS,
                         description=f"The server supports an obsolete TLS version: {version}.",
                         recommendation="Disable TLS 1.0 and 1.1. Upgrade to TLS 1.2 or 1.3.",
                         owasp_refs=["A02:2021-Cryptographic Failures", "A05:2021-Security Misconfiguration"]
@@ -67,8 +65,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
                         if days_left < 0:
                             findings.append(Finding(
                                 title="Certificate Expired",
-                                severity="high",
-                                category="tls",
+                                severity=Severity.HIGH,
+                                category=Category.TLS,
                                 description=f"The SSL certificate expired on {not_after}.",
                                 recommendation="Renew the SSL certificate immediately.",
                                 owasp_refs=["A02:2021-Cryptographic Failures"]
@@ -76,8 +74,8 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
                         elif days_left < 30:
                             findings.append(Finding(
                                 title="Certificate Near Expiration",
-                                severity="medium",
-                                category="tls",
+                                severity=Severity.MEDIUM,
+                                category=Category.TLS,
                                 description=f"The SSL certificate will expire in {days_left} days ({not_after}).",
                                 recommendation="Renew the SSL certificate soon.",
                                 owasp_refs=["A02:2021-Cryptographic Failures"]
@@ -85,6 +83,6 @@ def check_tls(hostname: str, port: int = 443) -> tuple[List[Finding], Optional[D
 
     except Exception as e:
         pass
-        
 
     return findings, cert_info
+

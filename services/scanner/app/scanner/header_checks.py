@@ -1,5 +1,6 @@
 from typing import List, Dict
 from .models import Finding
+from ..constants import Severity, Category
 
 def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     """
@@ -12,8 +13,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     if "strict-transport-security" not in headers_lower:
         findings.append(Finding(
             title="Missing HSTS Header",
-            severity="medium",
-            category="headers",
+            severity=Severity.MEDIUM,
+            category=Category.HEADERS,
             description="The 'Strict-Transport-Security' header is missing. This header ensures that browsers only connect to the site via HTTPS.",
             recommendation="Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains; preload'.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -23,8 +24,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     if "content-security-policy" not in headers_lower:
         findings.append(Finding(
             title="Missing Content-Security-Policy",
-            severity="medium",
-            category="headers",
+            severity=Severity.MEDIUM,
+            category=Category.HEADERS,
             description="The 'Content-Security-Policy' header is missing. This header helps prevent XSS and other code injection attacks.",
             recommendation="Define a strict Content-Security-Policy to restrict sources of executable scripts and other resources.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -34,8 +35,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
         if "'unsafe-eval'" in csp_value:
             findings.append(Finding(
                 title="CSP permissive (unsafe-eval)",
-                severity="info",
-                category="headers",
+                severity=Severity.INFO,
+                category=Category.HEADERS,
                 description="The Content-Security-Policy allows 'unsafe-eval', which enables the use of eval() and similar mechanisms.",
                 recommendation="Avoid using 'unsafe-eval' if possible.",
                 evidence=f"CSP value: {csp_value[:100]}..." if len(csp_value) > 100 else f"CSP value: {csp_value}",
@@ -45,8 +46,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
         if "'unsafe-inline'" in csp_value:
             findings.append(Finding(
                 title="CSP permissive (unsafe-inline)",
-                severity="info",
-                category="headers",
+                severity=Severity.INFO,
+                category=Category.HEADERS,
                 description="The Content-Security-Policy allows 'unsafe-inline', which enables inline scripts and styles.",
                 recommendation="Avoid using 'unsafe-inline' and use nonces or hashes instead.",
                 evidence=f"CSP value: {csp_value[:100]}..." if len(csp_value) > 100 else f"CSP value: {csp_value}",
@@ -57,8 +58,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     if "x-frame-options" not in headers_lower:
         findings.append(Finding(
             title="Missing X-Frame-Options",
-            severity="low",
-            category="headers",
+            severity=Severity.LOW,
+            category=Category.HEADERS,
             description="The 'X-Frame-Options' header is missing. This header helps prevent Clickjacking attacks.",
             recommendation="Add 'X-Frame-Options: DENY' or 'SAMEORIGIN'.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -68,8 +69,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     if "x-content-type-options" not in headers_lower:
         findings.append(Finding(
             title="Missing X-Content-Type-Options",
-            severity="low",
-            category="headers",
+            severity=Severity.LOW,
+            category=Category.HEADERS,
             description="The 'X-Content-Type-Options' header is missing. This prevents the browser from MIME-sniffing a response away from the declared content-type.",
             recommendation="Add 'X-Content-Type-Options: nosniff'.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -79,8 +80,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     if "referrer-policy" not in headers_lower:
         findings.append(Finding(
             title="Missing Referrer-Policy",
-            severity="info",
-            category="headers",
+            severity=Severity.INFO,
+            category=Category.HEADERS,
             description="The 'Referrer-Policy' header is missing. This controls how much referrer information is sent with requests.",
             recommendation="Add 'Referrer-Policy: strict-origin-when-cross-origin' or similar.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -90,8 +91,8 @@ def check_security_headers(headers: Dict[str, str]) -> List[Finding]:
     if "permissions-policy" not in headers_lower:
         findings.append(Finding(
             title="Missing Permissions-Policy",
-            severity="info",
-            category="headers",
+            severity=Severity.INFO,
+            category=Category.HEADERS,
             description="The 'Permissions-Policy' header is missing. This allows you to enable or disable certain browser features.",
             recommendation="Add a Permissions-Policy header to restrict access to sensitive features like camera, microphone, etc.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -126,8 +127,8 @@ def check_cors(headers: Dict[str, str]) -> tuple[List[Finding], Dict[str, any]]:
         
         findings.append(Finding(
             title="Configuration CORS dangereuse",
-            severity="high",
-            category="headers", # Using headers category as CORS is header-based
+            severity=Severity.HIGH,
+            category=Category.HEADERS,
             description="The server allows access from any origin ('*') while also allowing credentials (cookies, auth headers). This is a critical security risk.",
             recommendation="Restrict 'Access-Control-Allow-Origin' to a whitelist of trusted domains and avoid using wildcard with credentials.",
             evidence=f"Access-Control-Allow-Origin: {allow_origin}\nAccess-Control-Allow-Credentials: {allow_credentials}",
@@ -135,3 +136,4 @@ def check_cors(headers: Dict[str, str]) -> tuple[List[Finding], Dict[str, any]]:
         ))
         
     return findings, cors_info
+

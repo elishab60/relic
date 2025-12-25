@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from app.scanner.engine import ScanEngine
 from app.scanner.models import ScanResult, ScanLogEntry, Finding
 from app.scanner.scope import EndpointClass
+from app.constants import ScanStatus
 
 @pytest.fixture
 def scan_engine():
@@ -22,7 +23,7 @@ async def test_scan_normalization_error(scan_engine):
         result = await scan_engine.run_scan("invalid-url")
         assert result.grade == "F"
         assert result.score == 0
-        assert result.scan_status == "failed"
+        assert result.scan_status == ScanStatus.FAILED
         assert len(result.findings) == 1
         assert result.findings[0].title == "Scan Failed"
 
@@ -139,4 +140,4 @@ async def test_scan_success_flow_v2(scan_engine):
              
              assert result.grade == "A"
              assert result.score == 100
-             assert result.scan_status == "ok"
+             assert result.scan_status == ScanStatus.OK

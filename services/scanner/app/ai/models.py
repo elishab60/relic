@@ -5,7 +5,7 @@ This module defines the canonical schema for AI-generated security reports.
 All AI outputs MUST be validated against these models before use.
 
 Schema Version: 1.0.0
-Last Updated: 2024-12-24
+Last Updated: 2024-12-25
 
 CRITICAL: Do not modify field names or types without updating:
 - AI prompts in routes.py (AI_REPORT_SYSTEM_PROMPT)
@@ -16,10 +16,13 @@ CRITICAL: Do not modify field names or types without updating:
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
+from ..constants import Severity, RiskLevel
 
-# Canonical severity/risk levels (lowercase)
+
+# For Pydantic validation, we still use Literal but reference the enum values
 SeverityLevel = Literal["low", "medium", "high", "critical"]
-RiskLevel = Literal["très faible", "faible", "moyen", "élevé", "critique"]
+RiskLevelLiteral = Literal["très faible", "faible", "moyen", "élevé", "critique"]
+
 
 
 class AIGlobalScore(BaseModel):
@@ -95,7 +98,7 @@ class AIReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
     
     global_score: AIGlobalScore
-    overall_risk_level: RiskLevel
+    overall_risk_level: RiskLevelLiteral
     executive_summary: str = Field(..., min_length=10)
     key_vulnerabilities: List[AIKeyVulnerability] = Field(default_factory=list)
     site_map: AISiteMap = Field(default_factory=AISiteMap)

@@ -1,6 +1,7 @@
 from typing import List, Dict, Callable, Awaitable
 from .models import Finding, ScanLogEntry
 from .http_client import HttpClient
+from ..constants import Severity, Category
 
 async def check_exposure(headers: Dict[str, str]) -> List[Finding]:
     """
@@ -12,8 +13,8 @@ async def check_exposure(headers: Dict[str, str]) -> List[Finding]:
     if "server" in headers_lower:
         findings.append(Finding(
             title="Server Header Exposed",
-            severity="info",
-            category="exposure",
+            severity=Severity.INFO,
+            category=Category.EXPOSURE,
             description=f"The 'Server' header is exposed: {headers_lower['server']}.",
             recommendation="Configure the server to suppress or obscure the 'Server' header.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -22,8 +23,8 @@ async def check_exposure(headers: Dict[str, str]) -> List[Finding]:
     if "x-powered-by" in headers_lower:
         findings.append(Finding(
             title="X-Powered-By Header Exposed",
-            severity="low",
-            category="exposure",
+            severity=Severity.LOW,
+            category=Category.EXPOSURE,
             description=f"The 'X-Powered-By' header is exposed: {headers_lower['x-powered-by']}.",
             recommendation="Remove the 'X-Powered-By' header to hide the underlying technology.",
             owasp_refs=["A05:2021-Security Misconfiguration"]
@@ -110,7 +111,7 @@ async def check_xss_url(url: str, http_client: HttpClient, log_callback: Callabl
                                 if classification == EndpointClass.REDIRECTOR and ctx.context_type == 'url_param':
                                     continue
 
-                                severity = "high"
+                                severity = Severity.HIGH
                                 description = f"Reflected XSS detected on parameter '{param}'."
                                 description += f" Context: {ctx.context_type}."
                                 if ctx.tag_name:
@@ -123,7 +124,7 @@ async def check_xss_url(url: str, http_client: HttpClient, log_callback: Callabl
                                 findings.append(Finding(
                                     title="Reflected XSS Vulnerability",
                                     severity=severity,
-                                    category="xss",
+                                    category=Category.XSS,
                                     description=description,
                                     recommendation="Implement context-aware output encoding and validate all input.",
                                     evidence=evidence_str,
@@ -195,8 +196,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                             if sig in body:
                                 findings.append(Finding(
                                     title="Potential SQL Injection Error",
-                                    severity="high",
-                                    category="sqli",
+                                    severity=Severity.HIGH,
+                                    category=Category.SQLI,
                                     description="Database error message found.",
                                     recommendation="Use parameterized queries.",
                                     evidence=f"Signature: '{sig}'\nPayload: {payload}",
@@ -245,8 +246,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                         avg_duration = total_duration / attempts
                         findings.append(Finding(
                             title="Blind SQL Injection (Time-based)",
-                            severity="critical",
-                            category="sqli",
+                            severity=Severity.CRITICAL,
+                            category=Category.SQLI,
                             description=f"Response delayed by ~{avg_duration:.2f}s (Baseline: {avg_baseline:.2f}s).",
                             recommendation="Use parameterized queries.",
                             evidence=f"Payload: {payload}\nAvg Duration: {avg_duration:.2f}s\nBaseline: {avg_baseline:.2f}s",
@@ -259,8 +260,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                     if "timeout" in str(e).lower():
                          findings.append(Finding(
                                 title="Blind SQL Injection (Timeout)",
-                                severity="critical",
-                                category="sqli",
+                                severity=Severity.CRITICAL,
+                                category=Category.SQLI,
                                 description="Request timed out consistently with sleep payload.",
                                 recommendation="Use parameterized queries.",
                                 evidence=f"Payload: {payload}\nResult: Timeout",
@@ -375,8 +376,8 @@ async def check_https_enforcement(target_info: 'TargetInfo', http_client: HttpCl
     if not debug_data["http_redirected_to_https"] and debug_data["https_reachable"]:
         findings.append(Finding(
             title="Le site est accessible en HTTP (HTTPS non imposé)",
-            severity="high",
-            category="tls", # Fits TLS/Encryption category
+            severity=Severity.HIGH,
+            category=Category.TLS,
             description="Le site est accessible en HTTP sans redirection automatique vers HTTPS, bien que HTTPS soit disponible.",
             recommendation="Forcer la redirection 301 vers HTTPS, servir HSTS uniquement sur HTTPS, envisager includeSubDomains.",
             evidence=f"HTTP URL: {debug_data['http_final_url']}\nHTTPS is reachable.",
@@ -446,8 +447,8 @@ async def check_sensitive_url(url: str, http_client: HttpClient, log_callback: C
                 description = f"Sensitive file detected at {url}. It appears to contain: {', '.join(found_secrets)}."
                 findings.append(Finding(
                     title="Sensitive Information Exposure",
-                    severity="critical",
-                    category="exposure",
+                    severity=Severity.CRITICAL,
+                    category=Category.EXPOSURE,
                     description=description,
                     recommendation="Remove this file immediately and rotate any exposed credentials.",
                     evidence=f"URL: {url}\nSecrets found: {', '.join(found_secrets)}\nSnippet: {content[:200]}...",

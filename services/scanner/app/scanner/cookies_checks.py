@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from httpx import Response
 from http.cookies import SimpleCookie
 from .models import Finding
+from ..constants import Severity, Category
 
 def analyze_cookies(history: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], Dict[str, Any], List[Finding]]:
     """
@@ -130,8 +131,8 @@ def analyze_cookies(history: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]]
                 issues_list.append(f"Cookie '{name}' (session) is missing 'Secure' flag.")
                 findings.append(Finding(
                     title=f"Insecure Session Cookie: {name}",
-                    severity="medium",
-                    category="cookies",
+                    severity=Severity.MEDIUM,
+                    category=Category.COOKIES,
                     description=f"The session cookie '{name}' does not have the 'Secure' flag set.",
                     recommendation=f"Set the 'Secure' flag for '{name}' to prevent transmission over unencrypted connections.",
                     evidence=f"Cookie: {name}"
@@ -146,8 +147,8 @@ def analyze_cookies(history: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]]
                 issues_list.append(f"Cookie '{name}' (session) is missing 'HttpOnly' flag.")
                 findings.append(Finding(
                     title=f"Session Cookie Missing HttpOnly: {name}",
-                    severity="medium",
-                    category="cookies",
+                    severity=Severity.MEDIUM,
+                    category=Category.COOKIES,
                     description=f"The session cookie '{name}' does not have the 'HttpOnly' flag set, making it accessible to JavaScript.",
                     recommendation=f"Set the 'HttpOnly' flag for '{name}' to prevent XSS attacks from stealing the session.",
                     evidence=f"Cookie: {name}"
@@ -158,8 +159,8 @@ def analyze_cookies(history: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]]
             issues_list.append(f"Cookie '{name}' has no SameSite attribute.")
             findings.append(Finding(
                 title=f"Cookie Missing SameSite: {name}",
-                severity="low",
-                category="cookies",
+                severity=Severity.LOW,
+                category=Category.COOKIES,
                 description=f"The cookie '{name}' does not have the 'SameSite' attribute set.",
                 recommendation=f"Set 'SameSite' to 'Lax' or 'Strict' for '{name}' to protect against CSRF.",
                 evidence=f"Cookie: {name}"

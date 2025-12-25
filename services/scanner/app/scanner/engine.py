@@ -16,6 +16,7 @@ from .port_scanner import scan_ports
 from .path_discovery import PathDiscoverer
 from .waf_detection import detect_waf_and_visibility
 from ..config import settings
+from ..constants import Severity, Category, ScanStatus, VisibilityLevel
 
 from .scope import ScopeManager, EndpointClass
 
@@ -111,8 +112,8 @@ class ScanEngine:
                 if isinstance(results[0], Exception):
                     findings.append(Finding(
                         title="Host Unreachable",
-                        severity="high",
-                        category="availability",
+                        severity=Severity.HIGH,
+                        category=Category.AVAILABILITY,
                         description="Could not resolve the hostname via DNS.",
                         recommendation="Check if the hostname is correct and accessible."
                     ))
@@ -123,8 +124,8 @@ class ScanEngine:
                     await log("ERROR", "Failed to establish HTTP connection")
                     findings.append(Finding(
                         title="HTTP Connection Failed",
-                        severity="high",
-                        category="availability",
+                        severity=Severity.HIGH,
+                        category=Category.AVAILABILITY,
                         description="Could not connect to the web server via HTTP/HTTPS.",
                         recommendation="Ensure the web server is running and accessible."
                     ))
@@ -365,15 +366,15 @@ class ScanEngine:
                 findings = [] 
                 findings.append(Finding(
                     title="Scan blocked by WAF / challenge page",
-                    severity="info",
-                    category="availability",
+                    severity=Severity.INFO,
+                    category=Category.AVAILABILITY,
                     description=f"The scanner was blocked by a security mechanism ({waf_info.get('blocking_mechanism')}). Only the challenge page was analyzed.",
                     recommendation="Allowlist the scanner IP or perform an authenticated scan."
                 ))
                 findings.append(Finding(
                     title="Limited visibility on the real application",
-                    severity="info",
-                    category="availability",
+                    severity=Severity.INFO,
+                    category=Category.AVAILABILITY,
                     description="No application content was discovered because of the WAF blocking.",
                     recommendation="Review the WAF configuration."
                 ))
@@ -424,8 +425,8 @@ class ScanEngine:
         findings = [
             Finding(
                 title="Scan Failed",
-                severity="high",
-                category="error",
+                severity=Severity.HIGH,
+                category=Category.ERROR,
                 description=f"The scan could not complete due to an error: {error_message}",
                 recommendation="Check the logs and target availability."
             )
@@ -439,7 +440,8 @@ class ScanEngine:
             logs=logs,
             scanned_at=datetime.utcnow(),
             response_time_ms=int((datetime.utcnow() - start_time).total_seconds() * 1000),
-            scan_status="failed",
+            scan_status=ScanStatus.FAILED,
             blocking_mechanism=None,
-            visibility_level="none"
+            visibility_level=VisibilityLevel.BLOCKED
         )
+
