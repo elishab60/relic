@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { BootProvider } from "@/components/BootProvider";
 
 export const metadata: Metadata = {
     title: "Relic",
@@ -13,7 +14,11 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="dark">
-            <body>{children}</body>
+            <body>
+                <BootProvider>
+                    {children}
+                </BootProvider>
+            </body>
         </html>
     );
 }

@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Tuple
 from .models import Finding
 from .http_client import HttpClient
 from ..constants import Severity, Category
+from .utils.repro_curl import build_cors_repro_curl
 
 async def check_cors(target_url: str, initial_headers: Dict[str, str], http_client: HttpClient, log_callback, cookies_present: bool = False) -> Tuple[List[Finding], Dict[str, Any]]:
     """
@@ -44,13 +45,16 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
     # 1. Passive Analysis
     if allow_origin == "*" and credentials_true:
         severity = Severity.HIGH if cookies_present else Severity.MEDIUM
+        repro_curl = build_cors_repro_curl(target_url, "https://attacker.example.com")
         findings.append(Finding(
             title="Dangerous CORS: Wildcard Origin with Credentials",
             severity=severity,
             category=Category.CORS,
             description="The server allows access from any origin ('*') while also allowing credentials. This is a critical security risk if authentication cookies are used.",
             recommendation="Restrict 'Access-Control-Allow-Origin' to a whitelist of trusted domains.",
-            evidence=f"Access-Control-Allow-Origin: *\nAccess-Control-Allow-Credentials: true\nContext: Cookies Present={cookies_present}"
+            evidence=f"Access-Control-Allow-Origin: *\nAccess-Control-Allow-Credentials: true\nContext: Cookies Present={cookies_present}",
+            confidence="high",  # Wildcard + credentials = high confidence
+            repro_curl=repro_curl
         ))
         cors_info["notes"].append("Passive: Wildcard + Credentials detected.")
         
@@ -70,7 +74,8 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
             category=Category.CORS,
             description=desc,
             recommendation="Ensure this is intended for a public API. Otherwise, restrict origins.",
-            evidence=f"Access-Control-Allow-Origin: *\nContext: Cookies Present={cookies_present}, Credentials Allowed={credentials_true}"
+            evidence=f"Access-Control-Allow-Origin: *\nContext: Cookies Present={cookies_present}, Credentials Allowed={credentials_true}",
+            confidence="medium"  # Wildcard without creds = medium confidence (could be intentional)
         ))
         cors_info["notes"].append("Passive: Wildcard detected.")
 
@@ -105,13 +110,16 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
                 title = "Dangerous CORS: Origin Reflection with Credentials"
                 desc += " It also allows credentials, which is a critical risk."
             
+            repro_curl = build_cors_repro_curl(target_url, evil_origin)
             findings.append(Finding(
                 title=title,
                 severity=severity,
                 category=Category.CORS,
                 description=desc,
                 recommendation="Validate the 'Origin' header against a whitelist before reflecting it.",
-                evidence=f"Sent Origin: {evil_origin}\nReceived ACAO: {resp_origin}\nACAC: {resp_creds}"
+                evidence=f"Sent Origin: {evil_origin}\nReceived ACAO: {resp_origin}\nACAC: {resp_creds}",
+                confidence="high",  # Origin reflection confirmed = high confidence
+                repro_curl=repro_curl
             ))
             cors_info["notes"].append(f"Active: Reflection detected for {evil_origin}")
             
@@ -134,14 +142,17 @@ async def check_cors(target_url: str, initial_headers: Dict[str, str], http_clie
         cors_info["probes"].append(probe_result)
         
         if resp_origin == null_origin and resp_creds and resp_creds.lower() == "true":
-             findings.append(Finding(
+            repro_curl = build_cors_repro_curl(target_url, null_origin)
+            findings.append(Finding(
                 title="Dangerous CORS: Null Origin with Credentials",
                 severity=Severity.HIGH,
                 category=Category.CORS,
                 description="The server allows the 'null' origin with credentials. This can be exploited via sandboxed iframes.",
                 recommendation="Do not allow 'null' origin with credentials.",
-                evidence=f"Sent Origin: null\nReceived ACAO: null\nACAC: true"
+                evidence=f"Sent Origin: null\nReceived ACAO: null\nACAC: true",
+                confidence="high",  # Null origin with credentials = high confidence
+                repro_curl=repro_curl
             ))
-             cors_info["notes"].append("Active: Null origin allowed with credentials.")
+            cors_info["notes"].append("Active: Null origin allowed with credentials.")
 
     return findings, cors_info

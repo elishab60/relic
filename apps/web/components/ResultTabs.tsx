@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScanResult } from '@/lib/types';
-import { Bot, Code, AlertTriangle, Shield, Target } from 'lucide-react';
+import { Bot, Code, AlertTriangle, Shield, Target, Copy, Check, Terminal } from 'lucide-react';
 import { getAiDebug } from '@/lib/api';
 import AiProviderToggle from './AiProviderToggle';
 import AiAnalysisSection from './AiAnalysisSection';
@@ -10,6 +10,7 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
     const [aiView, setAiView] = useState<any>(null);
     const [loadingAi, setLoadingAi] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState('ollama');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     useEffect(() => {
         if (showAiDebug && !aiView && result?.scan_id) {
@@ -30,11 +31,27 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
         return 'border-terminal-dim text-terminal-dim';
     };
 
+    const getConfidenceColor = (confidence?: string) => {
+        if (!confidence) return 'text-terminal-dim border-terminal-dim';
+        switch (confidence.toLowerCase()) {
+            case 'high': return 'text-green-400 border-green-400';
+            case 'medium': return 'text-yellow-400 border-yellow-400';
+            case 'low': return 'text-terminal-dim border-terminal-dim';
+            default: return 'text-terminal-dim border-terminal-dim';
+        }
+    };
+
     const getGradeColor = (grade: string) => {
         if (grade === 'A' || grade === 'B') return 'text-terminal-text';
         if (grade === 'C') return 'text-terminal-text';
         if (grade === 'N/A') return 'text-terminal-dim';
         return 'text-terminal-red';
+    };
+
+    const copyToClipboard = (text: string, id: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
     };
 
     return (
@@ -92,14 +109,61 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                                 <span className="font-bold text-terminal-textBright">
                                     {finding.title}
                                 </span>
-                                <span className={`text-xs px-2 py-0.5 rounded border font-bold uppercase ${getSeverityClass(finding.severity)}`}>
-                                    {finding.severity}
-                                </span>
+                                <div className="flex gap-2">
+                                    {finding.confidence && (
+                                        <span className={`text-xs px-2 py-0.5 rounded border font-bold uppercase ${getConfidenceColor(finding.confidence)}`}>
+                                            CONFIDENCE: {finding.confidence}
+                                        </span>
+                                    )}
+                                    <span className={`text-xs px-2 py-0.5 rounded border font-bold uppercase ${getSeverityClass(finding.severity)}`}>
+                                        {finding.severity}
+                                    </span>
+                                </div>
                             </div>
                             <p className="text-sm text-terminal-dim mb-2">{finding.impact}</p>
-                            <p className="text-xs text-terminal-text">
+                            <p className="text-xs text-terminal-text mb-4">
                                 <span className="text-terminal-dim">▸ FIX:</span> {finding.recommendation}
                             </p>
+
+                            {/* Evidence Section */}
+                            {finding.evidence_snippet && (
+                                <div className="mt-4 bg-black/30 p-3 rounded border border-terminal-border/50">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-terminal-dim uppercase flex items-center gap-2">
+                                            <Code size={12} /> Evidence
+                                        </span>
+                                        {finding.evidence_hash && (
+                                            <span className="text-[10px] font-mono text-terminal-dim">
+                                                SHA256: {finding.evidence_hash.substring(0, 8)}...
+                                            </span>
+                                        )}
+                                    </div>
+                                    <pre className="text-xs font-mono text-terminal-text overflow-x-auto whitespace-pre-wrap break-all">
+                                        {finding.evidence_snippet}
+                                    </pre>
+                                </div>
+                            )}
+
+                            {/* Reproduction Section */}
+                            {finding.repro_curl && (
+                                <div className="mt-4">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-xs font-bold text-terminal-dim uppercase flex items-center gap-2">
+                                            <Terminal size={12} /> Reproduction
+                                        </span>
+                                        <button
+                                            onClick={() => copyToClipboard(finding.repro_curl!, `curl-${i}`)}
+                                            className="text-xs flex items-center gap-1 text-terminal-dim hover:text-terminal-text transition-colors"
+                                        >
+                                            {copiedId === `curl-${i}` ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                                            {copiedId === `curl-${i}` ? 'Copied' : 'Copy cURL'}
+                                        </button>
+                                    </div>
+                                    <div className="bg-black/50 p-3 rounded border border-terminal-border/50 font-mono text-xs text-terminal-text overflow-x-auto">
+                                        {finding.repro_curl}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     ))
                 )}
@@ -117,8 +181,8 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                             <button
                                 onClick={() => setShowAiDebug(false)}
                                 className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${!showAiDebug
-                                        ? 'bg-terminal-accent text-terminal-bg'
-                                        : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
+                                    ? 'bg-terminal-accent text-terminal-bg'
+                                    : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
                                     }`}
                             >
                                 <Code size={14} /> JSON
@@ -126,8 +190,8 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                             <button
                                 onClick={() => setShowAiDebug(true)}
                                 className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${showAiDebug
-                                        ? 'bg-terminal-accent text-terminal-bg'
-                                        : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
+                                    ? 'bg-terminal-accent text-terminal-bg'
+                                    : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
                                     }`}
                             >
                                 <Bot size={14} /> AI

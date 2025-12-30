@@ -42,6 +42,8 @@ from .models import Finding
 from .http_client import HttpClient
 from .xss_detector import XSSDetector
 from .scope import EndpointClass
+from .utils.redaction import prepare_evidence_snippet
+from .utils.repro_curl import build_xss_repro_curl, build_sqli_repro_curl, build_sensitive_file_repro_curl
 
 async def extract_params(url: str) -> Dict[str, Set[str]]:
     """Extracts parameters from a URL."""
@@ -121,6 +123,13 @@ async def check_xss_url(url: str, http_client: HttpClient, log_callback: Callabl
                                 
                                 evidence_str = f"Payload: {payload}\nURL: {test_url}\nContext: {ctx.context_type}\nEvidence: {ctx.evidence}"
                                 
+                                # Prepare evidence with redaction and hash
+                                raw_evidence = f"{response.text}" if response else ""
+                                snippet, evidence_hash = prepare_evidence_snippet(raw_evidence)
+                                
+                                # Build reproducible cURL
+                                repro_curl = build_xss_repro_curl(base_url, param, payload)
+                                
                                 findings.append(Finding(
                                     title="Reflected XSS Vulnerability",
                                     severity=severity,
@@ -128,7 +137,11 @@ async def check_xss_url(url: str, http_client: HttpClient, log_callback: Callabl
                                     description=description,
                                     recommendation="Implement context-aware output encoding and validate all input.",
                                     evidence=evidence_str,
-                                    owasp_refs=["A03:2021-Injection"]
+                                    owasp_refs=["A03:2021-Injection"],
+                                    confidence="high",  # Executable context = high confidence
+                                    repro_curl=repro_curl,
+                                    evidence_snippet=snippet,
+                                    evidence_hash=evidence_hash
                                 ))
                                 
                                 if log_callback:
@@ -185,7 +198,10 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
     for base_url, params in params_map.items():
         for param in params:
             # Error-based checks
+            param_vulnerable = False
             for payload in error_payloads:
+                if param_vulnerable: break
+                
                 test_url = f"{base_url}?{param}={urllib.parse.quote(payload)}"
                 try:
                     response = await http_client.get(test_url)
@@ -194,6 +210,10 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                         body = response.text.lower()
                         for sig in error_signatures:
                             if sig in body:
+                                # Prepare evidence with redaction and hash
+                                snippet, evidence_hash = prepare_evidence_snippet(response.text)
+                                repro_curl = build_sqli_repro_curl(base_url, param, payload)
+                                
                                 findings.append(Finding(
                                     title="Potential SQL Injection Error",
                                     severity=Severity.HIGH,
@@ -201,14 +221,20 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                                     description="Database error message found.",
                                     recommendation="Use parameterized queries.",
                                     evidence=f"Signature: '{sig}'\nPayload: {payload}",
-                                    owasp_refs=["A03:2021-Injection"]
+                                    owasp_refs=["A03:2021-Injection"],
+                                    confidence="high",  # Error-based = high confidence
+                                    repro_curl=repro_curl,
+                                    evidence_snippet=snippet,
+                                    evidence_hash=evidence_hash
                                 ))
                                 if log_callback:
                                     await log_callback("WARNING", f"SQL Error found on {param}")
+                                param_vulnerable = True
                                 break
-                    if findings: break
                 except Exception: pass
-            if findings: break
+            
+            if param_vulnerable:
+                continue # Move to next param, skip time-based checks for this param
 
             # Time-based checks (Rigorous)
             # Measure baseline
@@ -244,6 +270,8 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                     
                     if confirmed:
                         avg_duration = total_duration / attempts
+                        repro_curl = build_sqli_repro_curl(base_url, param, payload)
+                        
                         findings.append(Finding(
                             title="Blind SQL Injection (Time-based)",
                             severity=Severity.CRITICAL,
@@ -251,7 +279,11 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
                             description=f"Response delayed by ~{avg_duration:.2f}s (Baseline: {avg_baseline:.2f}s).",
                             recommendation="Use parameterized queries.",
                             evidence=f"Payload: {payload}\nAvg Duration: {avg_duration:.2f}s\nBaseline: {avg_baseline:.2f}s",
-                            owasp_refs=["A03:2021-Injection"]
+                            owasp_refs=["A03:2021-Injection"],
+                            confidence="medium",  # Time-based = medium confidence (timing can vary)
+                            repro_curl=repro_curl,
+                            evidence_snippet=None,  # No response body evidence for time-based
+                            evidence_hash=None
                         ))
                         if log_callback:
                             await log_callback("WARNING", f"Blind SQLi confirmed on {param}")
@@ -273,29 +305,90 @@ async def check_sqli_url(url: str, http_client: HttpClient, log_callback: Callab
 
 async def check_xss(target: str, http_client: HttpClient, log_callback: Callable[[str, str], Awaitable[None]] = None, discovered_urls: List[str] = None) -> tuple[List[Finding], Dict[str, any]]:
     """
-    Wrapper for check_xss.
+    Wrapper for check_xss with deduplication.
+    Aggregates parameters by base URL to ensure each parameter is tested only once.
     """
-    # Simplified implementation calling check_xss_url
     findings = []
     evidence = []
     urls = [target] + (discovered_urls or [])
-    for u in urls[:20]:
-        f, e = await check_xss_url(u, http_client, log_callback)
+    
+    # Deduplication: BaseURL -> Set[Params]
+    global_params_map: Dict[str, Set[str]] = {}
+    
+    # 1. Aggregate parameters from all URLs
+    for u in urls:
+        try:
+            # We use extract_params to parse the URL
+            p_map = await extract_params(u)
+            for base_url, params in p_map.items():
+                if base_url not in global_params_map:
+                    global_params_map[base_url] = set()
+                global_params_map[base_url].update(params)
+        except Exception:
+            continue
+
+    # 2. Test each Base URL with all its unique parameters
+    # We construct a single "merged" URL for each base URL containing all parameters
+    # This works because check_xss_url extracts params from the URL provided
+    
+    # Limit to 20 base URLs to prevent scanning too long
+    base_urls = list(global_params_map.keys())[:20]
+    
+    for base_url in base_urls:
+        params = global_params_map[base_url]
+        if not params:
+            continue
+            
+        # Construct merged URL: base_url?p1=1&p2=1...
+        # We assign a dummy value '1' to each param
+        query_string = "&".join([f"{p}=1" for p in params])
+        merged_url = f"{base_url}?{query_string}"
+        
+        f, e = await check_xss_url(merged_url, http_client, log_callback)
         findings.extend(f)
         evidence.extend(e)
+        
     return findings, {"outcome": "done", "evidence": evidence}
 
 async def check_sqli(target: str, http_client: HttpClient, log_callback: Callable[[str, str], Awaitable[None]] = None, discovered_urls: List[str] = None) -> tuple[List[Finding], Dict[str, any]]:
     """
-    Wrapper for check_sqli.
+    Wrapper for check_sqli with deduplication.
+    Aggregates parameters by base URL to ensure each parameter is tested only once.
     """
     findings = []
     evidence = []
     urls = [target] + (discovered_urls or [])
-    for u in urls[:20]:
-        f, e = await check_sqli_url(u, http_client, log_callback)
+    
+    # Deduplication: BaseURL -> Set[Params]
+    global_params_map: Dict[str, Set[str]] = {}
+    
+    # 1. Aggregate parameters from all URLs
+    for u in urls:
+        try:
+            p_map = await extract_params(u)
+            for base_url, params in p_map.items():
+                if base_url not in global_params_map:
+                    global_params_map[base_url] = set()
+                global_params_map[base_url].update(params)
+        except Exception:
+            continue
+
+    # 2. Test each Base URL with all its unique parameters
+    base_urls = list(global_params_map.keys())[:20]
+    
+    for base_url in base_urls:
+        params = global_params_map[base_url]
+        if not params:
+            continue
+            
+        # Construct merged URL
+        query_string = "&".join([f"{p}=1" for p in params])
+        merged_url = f"{base_url}?{query_string}"
+        
+        f, e = await check_sqli_url(merged_url, http_client, log_callback)
         findings.extend(f)
         evidence.extend(e)
+        
     return findings, {"outcome": "done", "evidence": evidence}
 
 async def check_https_enforcement(target_info: 'TargetInfo', http_client: HttpClient, log_callback: Callable[[str, str], Awaitable[None]] = None) -> tuple[List[Finding], Dict[str, any]]:
@@ -445,6 +538,11 @@ async def check_sensitive_url(url: str, http_client: HttpClient, log_callback: C
 
             if found_secrets:
                 description = f"Sensitive file detected at {url}. It appears to contain: {', '.join(found_secrets)}."
+                
+                # Prepare evidence with redaction and hash
+                snippet, evidence_hash = prepare_evidence_snippet(content)
+                repro_curl = build_sensitive_file_repro_curl(url)
+                
                 findings.append(Finding(
                     title="Sensitive Information Exposure",
                     severity=Severity.CRITICAL,
@@ -452,7 +550,11 @@ async def check_sensitive_url(url: str, http_client: HttpClient, log_callback: C
                     description=description,
                     recommendation="Remove this file immediately and rotate any exposed credentials.",
                     evidence=f"URL: {url}\nSecrets found: {', '.join(found_secrets)}\nSnippet: {content[:200]}...",
-                    owasp_refs=["A05:2021-Security Misconfiguration", "A02:2021-Cryptographic Failures"]
+                    owasp_refs=["A05:2021-Security Misconfiguration", "A02:2021-Cryptographic Failures"],
+                    confidence="high",  # Confirmed secrets = high confidence
+                    repro_curl=repro_curl,
+                    evidence_snippet=snippet,
+                    evidence_hash=evidence_hash
                 ))
                 if log_callback:
                     await log_callback("WARNING", f"Sensitive file confirmed: {url} ({', '.join(found_secrets)})")

@@ -176,9 +176,15 @@ function AuthorizationModal({
     );
 }
 
+import { useBoot } from '@/components/BootProvider';
+
 export default function Page() {
-    const [booting, setBooting] = useState(true);
+    const { hasBooted, setHasBooted } = useBoot();
     const [target, setTarget] = useState('');
+
+    const handleBootComplete = () => {
+        setHasBooted(true);
+    };
     const [scanId, setScanId] = useState<string | null>(null);
     const [result, setResult] = useState<ScanResult | null>(null);
     const [showAuthModal, setShowAuthModal] = useState(false);
@@ -186,11 +192,29 @@ export default function Page() {
 
     const { logs, status } = useScanLogs(scanId);
 
+    // Track the scanId for which we last fetched results
+    const [fetchedForScanId, setFetchedForScanId] = useState<string | null>(null);
+
     useEffect(() => {
-        if (status === 'done' && scanId && !result) {
-            getResult(scanId).then(setResult);
+        // Only fetch if:
+        // 1. status is 'done' (scan completed)
+        // 2. we have a scanId
+        // 3. we haven't already fetched for this scanId
+        if (status === 'done' && scanId && fetchedForScanId !== scanId) {
+            getResult(scanId).then((fetchedResult) => {
+                // Double-check scanId hasn't changed during the async fetch
+                setResult(fetchedResult);
+                setFetchedForScanId(scanId);
+            }).catch((err) => {
+                console.error("Failed to fetch result:", err);
+            });
         }
-    }, [status, scanId, result]);
+
+        // Regression Guard: Ensure UI state matches fetched result
+        if (process.env.NODE_ENV === 'development' && result && scanId && result.scan_id !== scanId) {
+            console.error(`[Regression] UI ScanID (${scanId}) mismatch with Result ScanID (${result.scan_id})`);
+        }
+    }, [status, scanId, fetchedForScanId, result]);
 
     const handleStartClick = (e: React.FormEvent) => {
         e.preventDefault();
@@ -203,6 +227,7 @@ export default function Page() {
         setShowAuthModal(false);
         setResult(null);
         setScanError(null);
+        setFetchedForScanId(null); // Reset fetch tracker for new scan
 
         try {
             // Pass authorized: true since user confirmed in modal
@@ -219,8 +244,8 @@ export default function Page() {
     };
 
     // Show boot animation on first load
-    if (booting) {
-        return <BootAnimation onComplete={() => setBooting(false)} />;
+    if (!hasBooted) {
+        return <BootAnimation onComplete={handleBootComplete} />;
     }
 
     return (

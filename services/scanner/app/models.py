@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 from sqlmodel import Field, SQLModel, JSON
 import uuid
@@ -22,6 +22,7 @@ class ScanLog(BaseModel):
     message: str
 
 class Finding(BaseModel):
+    """Represents a security finding with credibility metadata."""
     title: str
     severity: str
     category: str
@@ -29,6 +30,11 @@ class Finding(BaseModel):
     recommendation: str
     evidence: Optional[str] = None
     owasp_refs: List[str] = []
+    # New fields for PR-01: Evidence & Credibility Upgrade
+    confidence: Optional[Literal["low", "medium", "high"]] = None
+    repro_curl: Optional[str] = None
+    evidence_snippet: Optional[str] = None
+    evidence_hash: Optional[str] = None
 
 class ScanResult(BaseModel):
     scan_id: str
@@ -48,6 +54,16 @@ class ScanResult(BaseModel):
 
 class ScanResponse(BaseModel):
     scan_id: str
+
+class ScanListItem(BaseModel):
+    """Model for scan list items with summary metadata."""
+    scan_id: str
+    target: str
+    status: str
+    started_at: datetime
+    score: Optional[int] = None
+    grade: Optional[str] = None
+    findings_count: int = 0
 
 # DB Model
 class Scan(SQLModel, table=True):

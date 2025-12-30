@@ -191,6 +191,7 @@ class ScanEngine:
             
             vuln_findings = []
             checked_urls = set()
+            all_urls = [] # Collect all URLs for deduplicated scanning
             
             async def process_url(url_info):
                 if isinstance(url_info, dict):
@@ -205,43 +206,22 @@ class ScanEngine:
                 if url in checked_urls:
                     return
                 checked_urls.add(url)
+                all_urls.append(url)
                 
                 # Log interesting classifications
                 if classification != EndpointClass.STATIC_ASSET:
                     # await log("INFO", f"Testing {url} [{classification}]")
                     pass
                 
+                # Only run sensitive file check per-URL here
+                # XSS and SQLi are now run in batch after crawling
                 res = await asyncio.gather(
-                    check_xss_url(url, self.http_client, log, classification),
-                    check_sqli_url(url, self.http_client, log, classification),
                     check_sensitive_url(url, self.http_client, log, classification),
                     return_exceptions=True
                 )
                 
                 if not isinstance(res[0], Exception):
-                    x_findings, x_evidence = res[0]
-                    vuln_findings.extend(x_findings)
-                    if x_findings or x_evidence:
-                        checks_outcomes.append({
-                            "name": "xss",
-                            "url": url,
-                            "outcome": "fail" if x_findings else "pass",
-                            "evidence": x_evidence
-                        })
-                
-                if not isinstance(res[1], Exception):
-                    s_findings, s_evidence = res[1]
-                    vuln_findings.extend(s_findings)
-                    if s_findings or s_evidence:
-                        checks_outcomes.append({
-                            "name": "sqli",
-                            "url": url,
-                            "outcome": "fail" if s_findings else "pass",
-                            "evidence": s_evidence
-                        })
-
-                if not isinstance(res[2], Exception):
-                    sens_findings, sens_evidence = res[2]
+                    sens_findings, sens_evidence = res[0]
                     vuln_findings.extend(sens_findings)
                     if sens_findings or sens_evidence:
                         checks_outcomes.append({
@@ -274,6 +254,41 @@ class ScanEngine:
                     
             except Exception as e:
                 await log("ERROR", f"Crawler/Pipeline failed: {e}")
+
+            # Batch Vulnerability Checks (XSS & SQLi) with Deduplication
+            if all_urls:
+                await log("INFO", f"Running batch XSS/SQLi checks on {len(all_urls)} unique URLs...")
+                
+                # Run XSS and SQLi checks in parallel on the collected URLs
+                batch_results = await asyncio.gather(
+                    check_xss(target_info.full_url, self.http_client, log, discovered_urls=all_urls),
+                    check_sqli(target_info.full_url, self.http_client, log, discovered_urls=all_urls),
+                    return_exceptions=True
+                )
+                
+                # Process XSS Results
+                if not isinstance(batch_results[0], Exception):
+                    x_findings, x_debug = batch_results[0]
+                    vuln_findings.extend(x_findings)
+                    checks_outcomes.append({
+                        "name": "xss_batch",
+                        "outcome": "fail" if x_findings else "pass",
+                        "evidence": x_debug.get("evidence", [])
+                    })
+                else:
+                    await log("ERROR", f"Batch XSS check failed: {batch_results[0]}")
+
+                # Process SQLi Results
+                if not isinstance(batch_results[1], Exception):
+                    s_findings, s_debug = batch_results[1]
+                    vuln_findings.extend(s_findings)
+                    checks_outcomes.append({
+                        "name": "sqli_batch",
+                        "outcome": "fail" if s_findings else "pass",
+                        "evidence": s_debug.get("evidence", [])
+                    })
+                else:
+                    await log("ERROR", f"Batch SQLi check failed: {batch_results[1]}")
 
             # Path Discovery
             try:

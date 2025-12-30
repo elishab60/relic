@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse, Response
-from .models import ScanRequest, ScanResponse, ScanResult, ScanLog, Finding
+from .models import ScanRequest, ScanResponse, ScanResult, ScanLog, Finding, ScanListItem
 from . import store
 from .policy import validate_scan_request, PolicyError
 from .sse import event_generator
@@ -378,10 +378,27 @@ Analyze this data and provide the security report in the requested JSON format.
              raise HTTPException(status_code=504, detail="AI analysis timed out. The model took too long to respond.")
         raise HTTPException(status_code=500, detail=f"Failed to generate AI analysis: {error_msg}")
 
-@router.get("/scans", response_model=list[ScanResponse])
+@router.get("/scans", response_model=list[ScanListItem])
 async def list_recent_scans():
+    """List recent scans with summary metadata."""
     scans = store.list_scans(limit=50)
-    return [ScanResponse(scan_id=s.id) for s in scans]
+    result = []
+    for s in scans:
+        # Count findings from result_json if available
+        findings_count = 0
+        if s.result_json and isinstance(s.result_json, dict):
+            findings_count = len(s.result_json.get("findings", []))
+        
+        result.append(ScanListItem(
+            scan_id=s.id,
+            target=s.target,
+            status=s.status,
+            started_at=s.started_at,
+            score=s.score,
+            grade=s.grade,
+            findings_count=findings_count
+        ))
+    return result
 
 
 @router.get("/scan/{scan_id}/ai-report.pdf")

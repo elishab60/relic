@@ -9,6 +9,10 @@ export interface Finding {
     severity: string;
     impact: string;
     recommendation: string;
+    confidence?: 'low' | 'medium' | 'high';
+    repro_curl?: string;
+    evidence_snippet?: string;
+    evidence_hash?: string;
 }
 
 export interface ScanResult {
@@ -23,4 +27,14 @@ export interface ScanResult {
     scan_status?: 'ok' | 'blocked' | 'partial';
     blocking_mechanism?: string | null;
     visibility_level?: 'good' | 'limited' | 'poor';
+}
+
+export interface ScanListItem {
+    scan_id: string;
+    target: string;
+    status: string;
+    started_at: string;
+    score: number | null;
+    grade: string | null;
+    findings_count: number;
 }
