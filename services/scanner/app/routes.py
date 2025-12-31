@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse, Response
-from .models import ScanRequest, ScanResponse, ScanResult, ScanLog, Finding
+from .models import ScanRequest, ScanResponse, ScanResult, ScanLog, Finding, ScanSummary
 from . import store
 from .policy import validate_scan_request, PolicyError
 from .sse import event_generator
