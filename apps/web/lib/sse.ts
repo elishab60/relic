@@ -4,11 +4,18 @@ import { ScanLog } from "./types";
 export function useScanLogs(scanId: string | null) {
     const [logs, setLogs] = useState<ScanLog[]>([]);
     const [status, setStatus] = useState<string>("idle");
+    const [prevScanId, setPrevScanId] = useState<string | null>(scanId);
+
+    // Reset state immediately when scanId changes
+    if (scanId !== prevScanId) {
+        setLogs([]);
+        setStatus("idle");
+        setPrevScanId(scanId);
+    }
 
     useEffect(() => {
         if (!scanId) return;
 
-        setLogs([]);
         setStatus("running");
 
         // Connect directly to backend

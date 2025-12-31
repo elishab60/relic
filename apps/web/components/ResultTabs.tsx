@@ -78,7 +78,7 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                     FINDINGS
                 </h3>
 
-                {result.findings.length === 0 ? (
+                {(!result.findings || result.findings.length === 0) ? (
                     <div className="text-terminal-dim italic p-4 terminal-box">
                         <span className="text-terminal-text">[✓]</span> No critical vulnerabilities detected
                     </div>
@@ -117,8 +117,8 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                             <button
                                 onClick={() => setShowAiDebug(false)}
                                 className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${!showAiDebug
-                                        ? 'bg-terminal-accent text-terminal-bg'
-                                        : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
+                                    ? 'bg-terminal-accent text-terminal-bg'
+                                    : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
                                     }`}
                             >
                                 <Code size={14} /> JSON
@@ -126,8 +126,8 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                             <button
                                 onClick={() => setShowAiDebug(true)}
                                 className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${showAiDebug
-                                        ? 'bg-terminal-accent text-terminal-bg'
-                                        : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
+                                    ? 'bg-terminal-accent text-terminal-bg'
+                                    : 'bg-terminal-bg text-terminal-dim hover:text-terminal-text border border-terminal-border'
                                     }`}
                             >
                                 <Bot size={14} /> AI

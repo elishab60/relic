@@ -49,6 +49,17 @@ class ScanResult(BaseModel):
 class ScanResponse(BaseModel):
     scan_id: str
 
+class ScanSummary(BaseModel):
+    """Summary of a scan for list views."""
+    scan_id: str
+    target: str
+    status: str
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    score: Optional[int] = None
+    grade: Optional[str] = None
+    findings_count: int = 0
+
 # DB Model
 class Scan(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)

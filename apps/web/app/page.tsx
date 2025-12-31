@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import TerminalShell from '@/components/TerminalShell';
 import LogConsole from '@/components/LogConsole';
 import ResultTabs from '@/components/ResultTabs';
 import BootAnimation from '@/components/BootAnimation';
 import AsciiAnimation from '@/components/AsciiAnimation';
+import { useBootContext } from '@/components/BootProvider';
 import { useScanLogs } from '@/lib/sse';
 import { startScan, getResult } from '@/lib/api';
 import { ScanResult } from '@/lib/types';
-import { Shield, Play, Loader2, Terminal, AlertTriangle, X, Crosshair, Lock, Unlock } from 'lucide-react';
+import { Shield, Play, Loader2, Terminal, AlertTriangle, X, Crosshair, Lock, Unlock, History } from 'lucide-react';
 
 // Authorization Modal Component - Cyberpunk Terminal Style
 function AuthorizationModal({
@@ -177,7 +179,7 @@ function AuthorizationModal({
 }
 
 export default function Page() {
-    const [booting, setBooting] = useState(true);
+    const { hasBooted, setHasBooted } = useBootContext();
     const [target, setTarget] = useState('');
     const [scanId, setScanId] = useState<string | null>(null);
     const [result, setResult] = useState<ScanResult | null>(null);
@@ -205,6 +207,7 @@ export default function Page() {
         setScanError(null);
 
         try {
+            setScanId(null);
             // Pass authorized: true since user confirmed in modal
             const { scan_id } = await startScan(target, true);
             setScanId(scan_id);
@@ -218,9 +221,9 @@ export default function Page() {
         setShowAuthModal(false);
     };
 
-    // Show boot animation on first load
-    if (booting) {
-        return <BootAnimation onComplete={() => setBooting(false)} />;
+    // Show boot animation only if not seen this session
+    if (!hasBooted) {
+        return <BootAnimation onComplete={() => setHasBooted(true)} />;
     }
 
     return (
@@ -242,6 +245,16 @@ export default function Page() {
                             <Shield className="text-terminal-red" size={14} />
                             TARGET
                         </h2>
+
+                        <div className="flex items-center gap-2 mb-4">
+                            <Link
+                                href="/history"
+                                className="cyber-button-outline flex items-center gap-2 text-xs py-1.5 px-3"
+                            >
+                                <History size={14} />
+                                <span className="uppercase tracking-wider">History</span>
+                            </Link>
+                        </div>
 
                         <form onSubmit={handleStartClick} className="flex gap-4">
                             <div className="flex-1 relative">

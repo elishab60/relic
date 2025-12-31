@@ -378,10 +378,23 @@ Analyze this data and provide the security report in the requested JSON format.
              raise HTTPException(status_code=504, detail="AI analysis timed out. The model took too long to respond.")
         raise HTTPException(status_code=500, detail=f"Failed to generate AI analysis: {error_msg}")
 
-@router.get("/scans", response_model=list[ScanResponse])
-async def list_recent_scans():
-    scans = store.list_scans(limit=50)
-    return [ScanResponse(scan_id=s.id) for s in scans]
+@router.get("/scans")
+async def list_scans(limit: int = 50, offset: int = 0):
+    """List all scans with summary metadata."""
+    scans = store.list_scans(limit=limit, offset=offset)
+    return [
+        {
+            "scan_id": s.id,
+            "target": s.target,
+            "status": s.status,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "finished_at": s.finished_at.isoformat() if s.finished_at else None,
+            "score": s.score,
+            "grade": s.grade,
+            "findings_count": len(s.result_json.get("findings", [])) if s.result_json else 0
+        }
+        for s in scans
+    ]
 
 
 @router.get("/scan/{scan_id}/ai-report.pdf")
