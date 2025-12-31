@@ -1,49 +1,289 @@
 import asyncio
-from typing import List, Dict, Any, Callable, Awaitable
+from enum import Enum
+from typing import List, Dict, Any, Callable, Awaitable, Set
 from urllib.parse import urljoin
 from .http_client import HttpClient
+
+
+class PathDiscoveryProfile(Enum):
+    """
+    Discovery profiles that control the depth and breadth of path discovery.
+    
+    - MINIMAL: ~10-15 paths (very fast, legacy behavior)
+    - STANDARD: ~40-60 paths (default, balanced coverage)
+    - THOROUGH: ~80-120 paths (higher coverage, bounded)
+    """
+    MINIMAL = "minimal"
+    STANDARD = "standard"
+    THOROUGH = "thorough"
+
+
+# =============================================================================
+# PATH DEFINITIONS BY PROFILE
+# =============================================================================
+
+# MINIMAL profile paths (~13 paths) - matches original behavior
+PATHS_MINIMAL: List[str] = [
+    # Core sensitive paths
+    "/admin",
+    "/login",
+    "/auth",
+    "/dashboard",
+    "/api",
+    "/config",
+    "/backup",
+    "/backup.zip",
+    "/phpinfo.php",
+    "/.env",
+    "/.git/HEAD",
+    "/robots.txt",
+    "/sitemap.xml",
+]
+
+# Additional paths for STANDARD profile (~35 more paths, total ~48)
+PATHS_STANDARD_ADDITIONS: List[str] = [
+    # Debug & diagnostics
+    "/debug",
+    "/_debug",
+    "/actuator",
+    "/actuator/health",
+    "/actuator/env",
+    "/actuator/info",
+    "/server-status",
+    "/server-info",
+    "/status",
+    "/health",
+    "/healthcheck",
+    
+    # Admin & consoles
+    "/console",
+    "/wp-admin",
+    "/wp-login.php",
+    "/administrator",
+    "/phpmyadmin",
+    "/adminer",
+    
+    # APIs & schemas
+    "/api/v1",
+    "/api/v2",
+    "/swagger",
+    "/swagger.json",
+    "/swagger-ui.html",
+    "/v3/api-docs",
+    "/openapi.json",
+    "/graphql",
+    "/graphiql",
+    
+    # CI / Dev artifacts
+    "/.git",
+    "/.git/config",
+    "/.env.local",
+    "/.env.production",
+    "/config.json",
+    "/config.yml",
+    "/settings.json",
+    
+    # Common metadata
+    "/favicon.ico",
+    "/crossdomain.xml",
+    "/security.txt",
+    "/.well-known/security.txt",
+]
+
+# Additional paths for THOROUGH profile (~50 more paths, total ~98)
+PATHS_THOROUGH_ADDITIONS: List[str] = [
+    # Extended debug & diagnostics
+    "/actuator/beans",
+    "/actuator/configprops",
+    "/actuator/mappings",
+    "/actuator/metrics",
+    "/actuator/threaddump",
+    "/actuator/heapdump",
+    "/trace",
+    "/debug/vars",
+    "/debug/pprof",
+    "/elmah.axd",
+    "/info",
+    "/__debug__",
+    
+    # Extended admin & consoles
+    "/cpanel",
+    "/webmail",
+    "/plesk",
+    "/manager/html",
+    "/jmx-console",
+    "/web-console",
+    "/admin.php",
+    "/admin.html",
+    "/backend",
+    "/manage",
+    "/controlpanel",
+    
+    # Extended APIs
+    "/api/swagger.json",
+    "/api/docs",
+    "/api/schema",
+    "/docs",
+    "/redoc",
+    "/api-docs",
+    "/api/graphql",
+    "/api/rest",
+    
+    # Extended dev artifacts
+    "/.gitignore",
+    "/.htaccess",
+    "/.htpasswd",
+    "/composer.json",
+    "/composer.lock",
+    "/package.json",
+    "/package-lock.json",
+    "/yarn.lock",
+    "/Gemfile",
+    "/Gemfile.lock",
+    "/requirements.txt",
+    "/Pipfile",
+    "/Pipfile.lock",
+    
+    # Backups & archives
+    "/backup.sql",
+    "/backup.tar.gz",
+    "/dump.sql",
+    "/database.sql",
+    "/db.sql",
+    "/site.zip",
+    "/www.zip",
+    "/data.zip",
+    
+    # CMS-specific paths
+    "/wp-config.php",
+    "/wp-config.php.bak",
+    "/wp-includes",
+    "/wp-content",
+    "/xmlrpc.php",
+    
+    # Error pages & logs
+    "/error.log",
+    "/errors.log",
+    "/access.log",
+    "/debug.log",
+    "/app.log",
+    
+    # Additional metadata
+    "/humans.txt",
+    "/ads.txt",
+    "/app-ads.txt",
+]
+
+
+def get_paths_for_profile(profile: PathDiscoveryProfile) -> List[str]:
+    """
+    Returns a deduplicated, ordered list of paths for the given profile.
+    
+    Profiles are cumulative:
+    - MINIMAL includes only PATHS_MINIMAL
+    - STANDARD includes MINIMAL + STANDARD_ADDITIONS
+    - THOROUGH includes STANDARD + THOROUGH_ADDITIONS
+    """
+    paths: List[str] = []
+    seen: Set[str] = set()
+    
+    def add_paths(path_list: List[str]) -> None:
+        for path in path_list:
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+    
+    # Always include MINIMAL paths
+    add_paths(PATHS_MINIMAL)
+    
+    if profile in (PathDiscoveryProfile.STANDARD, PathDiscoveryProfile.THOROUGH):
+        add_paths(PATHS_STANDARD_ADDITIONS)
+    
+    if profile == PathDiscoveryProfile.THOROUGH:
+        add_paths(PATHS_THOROUGH_ADDITIONS)
+    
+    return paths
+
+
+# =============================================================================
+# CRAWL URL LIMITS BY PROFILE
+# =============================================================================
+
+# Crawl limits control how many URLs the streaming crawler follows from HTML links
+CRAWL_LIMITS = {
+    PathDiscoveryProfile.MINIMAL: 20,    # Fast scan, fewer pages
+    PathDiscoveryProfile.STANDARD: 50,   # Balanced coverage
+    PathDiscoveryProfile.THOROUGH: 100,  # Deep crawl, more pages
+}
+
+
+def get_crawl_limit_for_profile(profile: PathDiscoveryProfile) -> int:
+    """Returns the max crawl URLs limit for the given profile."""
+    return CRAWL_LIMITS.get(profile, CRAWL_LIMITS[PathDiscoveryProfile.STANDARD])
+
 
 class PathDiscoverer:
     """
     Performs dictionary-based path discovery to find sensitive endpoints.
+    
+    Supports discovery profiles to control scan depth:
+    - MINIMAL: ~13 paths (fast, legacy behavior)
+    - STANDARD: ~48 paths (default, balanced)
+    - THOROUGH: ~98 paths (deep scan, bounded)
     """
     
-    # Common sensitive paths to check
-    PATHS_TO_CHECK = [
-        "/admin",
-        "/login",
-        "/auth",
-        "/dashboard",
-        "/api",
-        "/config",
-        "/backup",
-        "/backup.zip",
-        "/phpinfo.php",
-        "/.env",
-        "/.git/HEAD",
-        "/robots.txt",
-        "/sitemap.xml"
-    ]
-    
     # Paths that are considered "sensitive" if found
-    SENSITIVE_MARKERS = {
-        "/admin", "/.env", "/.git/HEAD", "/backup.zip", "/phpinfo.php", "/config"
+    SENSITIVE_MARKERS: Set[str] = {
+        # Original sensitive markers
+        "/admin", "/.env", "/.git/HEAD", "/backup.zip", "/phpinfo.php", "/config",
+        # Extended sensitive markers
+        "/.git", "/.git/config", "/.env.local", "/.env.production",
+        "/config.json", "/config.yml", "/settings.json",
+        "/actuator/env", "/actuator/heapdump", "/actuator/configprops",
+        "/wp-config.php", "/wp-config.php.bak",
+        "/.htpasswd", "/dump.sql", "/database.sql", "/db.sql", "/backup.sql",
+        "/backup.tar.gz", "/site.zip", "/www.zip", "/data.zip",
+        "/composer.json", "/package.json", "/requirements.txt",
+        "/error.log", "/errors.log", "/access.log", "/debug.log", "/app.log",
+        "/debug", "/_debug", "/__debug__", "/debug/vars", "/debug/pprof",
+        "/elmah.axd", "/jmx-console", "/web-console", "/manager/html",
     }
 
     # Login path patterns to detect redirects
-    LOGIN_PATTERNS = [
+    LOGIN_PATTERNS: List[str] = [
         "/login",
         "/signin",
         "/sign-in",
         "/auth/login",
         "/auth/signin",
         "/account/login",
-        "/user/login"
+        "/user/login",
+        "/wp-login.php",
     ]
 
-    def __init__(self, http_client: HttpClient, log_callback: Callable[[str, str], Awaitable[None]] = None):
+    def __init__(
+        self, 
+        http_client: HttpClient, 
+        log_callback: Callable[[str, str], Awaitable[None]] = None,
+        profile: PathDiscoveryProfile = PathDiscoveryProfile.STANDARD
+    ):
+        """
+        Initialize PathDiscoverer.
+        
+        Args:
+            http_client: HTTP client for making requests
+            log_callback: Optional async callback for logging
+            profile: Discovery profile (default: STANDARD)
+        """
         self.http_client = http_client
         self.log_callback = log_callback
+        self.profile = profile
+        self._paths_to_check = get_paths_for_profile(profile)
+
+    @property
+    def paths_to_check(self) -> List[str]:
+        """Returns the list of paths to check for this instance."""
+        return self._paths_to_check
 
     async def run(self, base_url: str) -> List[Dict[str, Any]]:
         """
@@ -58,7 +298,7 @@ class PathDiscoverer:
         # But urljoin handles it well.
         
         tasks = []
-        for path in self.PATHS_TO_CHECK:
+        for path in self._paths_to_check:
             tasks.append(self._check_path(base_url, path))
             
         # Run concurrently

@@ -1,7 +1,7 @@
 import asyncio
 import socket
 from datetime import datetime
-from typing import List, Callable, Awaitable
+from typing import List, Callable, Awaitable, Optional, Dict, Any
 import httpx
 
 from .models import ScanResult, ScanLogEntry, Finding
@@ -13,7 +13,7 @@ from .cookies_checks import analyze_cookies
 from .vuln_checks import check_exposure, check_xss, check_sqli, check_https_enforcement, check_xss_url, check_sqli_url, check_sensitive_url
 from .scoring import calculate_score
 from .port_scanner import scan_ports
-from .path_discovery import PathDiscoverer
+from .path_discovery import PathDiscoverer, PathDiscoveryProfile, get_crawl_limit_for_profile
 from .waf_detection import detect_waf_and_visibility
 from ..config import settings
 from ..constants import Severity, Category, ScanStatus, VisibilityLevel
@@ -25,13 +25,31 @@ class ScanEngine:
         self.http_client = None
         self.scope_manager = ScopeManager()
 
-    async def run_scan(self, target_input: str, log_callback: Callable[[ScanLogEntry], Awaitable[None]] = None) -> ScanResult:
+    async def run_scan(
+        self, 
+        target_input: str, 
+        log_callback: Callable[[ScanLogEntry], Awaitable[None]] = None,
+        config: Optional[Dict[str, Any]] = None
+    ) -> ScanResult:
         """
         Orchestrates the scan process.
+        
+        Args:
+            target_input: URL or hostname to scan
+            log_callback: Optional async callback for real-time logging
+            config: Optional scan configuration dict with:
+                    - path_profile: "minimal", "standard", or "thorough"
         """
         logs: List[ScanLogEntry] = []
         findings: List[Finding] = []
         start_time = datetime.utcnow()
+        
+        # Extract path discovery profile from config (PR-02a)
+        path_profile_str = (config or {}).get("path_profile", "standard")
+        try:
+            path_profile = PathDiscoveryProfile(path_profile_str)
+        except ValueError:
+            path_profile = PathDiscoveryProfile.STANDARD
         
         async def log(level: str, message: str):
             entry = ScanLogEntry(timestamp=datetime.utcnow(), level=level, message=message)
@@ -234,14 +252,17 @@ class ScanEngine:
             try:
                 content_type = response.headers.get("Content-Type", "").lower()
                 if "text/html" in content_type:
-                    await log("INFO", "HTML content detected, starting streaming crawler & vuln pipeline...")
+                    # Get crawl limit based on profile (PR-02b)
+                    crawl_limit = get_crawl_limit_for_profile(path_profile)
+                    await log("INFO", f"HTML content detected, starting streaming crawler (max {crawl_limit} URLs)...")
                     from .crawler import SimpleCrawler
                     crawler = SimpleCrawler(self.http_client, log)
                     
                     tasks = []
                     tasks.append(asyncio.create_task(process_url(target_info.full_url)))
                     
-                    async for asset in crawler.crawl_generator(target_info.full_url, response.text):
+                    # Pass profile-based limit to crawler
+                    async for asset in crawler.crawl_generator(target_info.full_url, response.text, max_urls=crawl_limit):
                         discovery_results.append(asset)
                         tasks.append(asyncio.create_task(process_url(asset)))
                     
@@ -290,9 +311,10 @@ class ScanEngine:
                 else:
                     await log("ERROR", f"Batch SQLi check failed: {batch_results[1]}")
 
-            # Path Discovery
+            # Path Discovery (uses profile from config - PR-02a)
             try:
-                path_discoverer = PathDiscoverer(self.http_client, log)
+                path_discoverer = PathDiscoverer(self.http_client, log, profile=path_profile)
+                await log("INFO", f"Using path discovery profile: {path_profile.value}")
                 discovered_paths = await path_discoverer.run(target_info.full_url)
             except Exception as e:
                 await log("ERROR", f"Path discovery failed: {e}")
