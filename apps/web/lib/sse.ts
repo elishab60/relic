@@ -21,9 +21,11 @@ export function useScanLogs(scanId: string | null) {
 
         setStatus("running");
 
-        // Connect directly to backend - use relative URL for Docker compatibility
-        const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:8000';
-        const eventSource = new EventSource(`${baseUrl}/api/scan/${scanId}/events`);
+        // Connect DIRECTLY to the scanner backend to avoid Next.js SSE buffering
+        // In Docker, port 8000 is exposed to localhost, so we can connect directly
+        // This bypasses the Next.js proxy which buffers SSE responses
+        const sseUrl = `http://localhost:8000/scan/${scanId}/events`;
+        const eventSource = new EventSource(sseUrl);
 
         eventSource.onmessage = (event) => {
             // Keep alive or generic messages

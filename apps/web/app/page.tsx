@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+
 import TerminalShell from '@/components/TerminalShell';
 import LogConsole from '@/components/LogConsole';
 import ResultTabs from '@/components/ResultTabs';
@@ -11,7 +11,7 @@ import { useBootContext } from '@/components/BootProvider';
 import { useScanLogs } from '@/lib/sse';
 import { startScan, getResult } from '@/lib/api';
 import { ScanResult } from '@/lib/types';
-import { Shield, Play, Loader2, Terminal, AlertTriangle, X, Crosshair, Lock, Unlock, History } from 'lucide-react';
+import { Shield, Play, Loader2, Terminal, AlertTriangle, X, Crosshair, Lock, Unlock } from 'lucide-react';
 
 // Authorization Modal Component - Cyberpunk Terminal Style
 function AuthorizationModal({
@@ -268,16 +268,6 @@ export default function Page() {
                             <Shield className="text-terminal-red" size={14} />
                             TARGET
                         </h2>
-
-                        <div className="flex items-center gap-2 mb-4">
-                            <Link
-                                href="/history"
-                                className="cyber-button-outline flex items-center gap-2 text-xs py-1.5 px-3"
-                            >
-                                <History size={14} />
-                                <span className="uppercase tracking-wider">History</span>
-                            </Link>
-                        </div>
 
                         <form onSubmit={handleStartClick} className="flex gap-4">
                             <div className="flex-1 relative">

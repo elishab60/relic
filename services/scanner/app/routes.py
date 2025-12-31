@@ -33,10 +33,10 @@ async def run_scan_task(scan_id: str, target: str):
     logs_buffer = []
 
     async def log_callback(entry: ScanLogEntry):
-        # Convert to dict
+        # Convert to dict - ensure level is a string for JSON serialization
         log_dict = {
             "timestamp": entry.timestamp.isoformat(),
-            "level": entry.level,
+            "level": str(entry.level),  # Convert LogLevel enum to string
             "message": entry.message
         }
         logs_buffer.append(log_dict)
