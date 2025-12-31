@@ -4,6 +4,17 @@ export interface ScanLog {
     msg: string;
 }
 
+export interface ScanSummary {
+    scan_id: string;
+    target: string;
+    status: string;
+    started_at: string | null;
+    finished_at: string | null;
+    score: number | null;
+    grade: string | null;
+    findings_count: number;
+}
+
 export interface Finding {
     title: string;
     severity: string;

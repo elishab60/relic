@@ -55,12 +55,13 @@ class ScanResult(BaseModel):
 class ScanResponse(BaseModel):
     scan_id: str
 
-class ScanListItem(BaseModel):
-    """Model for scan list items with summary metadata."""
+class ScanSummary(BaseModel):
+    """Summary of a scan for list views."""
     scan_id: str
     target: str
     status: str
     started_at: datetime
+    finished_at: Optional[datetime] = None
     score: Optional[int] = None
     grade: Optional[str] = None
     findings_count: int = 0

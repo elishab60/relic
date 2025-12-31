@@ -26,9 +26,9 @@ def get_scan(scan_id: str) -> Optional[Scan]:
     with Session(engine) as session:
         return session.get(Scan, scan_id)
 
-def list_scans(limit: int = 100) -> List[Scan]:
+def list_scans(limit: int = 100, offset: int = 0) -> List[Scan]:
     with Session(engine) as session:
-        statement = select(Scan).order_by(Scan.started_at.desc()).limit(limit)
+        statement = select(Scan).order_by(Scan.started_at.desc()).offset(offset).limit(limit)
         return session.exec(statement).all()
 
 def update_scan_status(scan_id: str, status: str):

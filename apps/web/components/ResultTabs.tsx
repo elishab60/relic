@@ -95,7 +95,7 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                     FINDINGS
                 </h3>
 
-                {result.findings.length === 0 ? (
+                {(!result.findings || result.findings.length === 0) ? (
                     <div className="text-terminal-dim italic p-4 terminal-box">
                         <span className="text-terminal-text">[✓]</span> No critical vulnerabilities detected
                     </div>

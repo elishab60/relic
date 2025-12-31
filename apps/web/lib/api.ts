@@ -1,13 +1,13 @@
-import { ScanResult, ScanListItem } from "./types";
+import { ScanResult, ScanSummary } from "./types";
 
 const BASE_URL = "/api/scan";
 
 /**
- * Fetch list of recent scans with summary metadata.
+ * Fetch list of all scans with summary metadata.
  */
-export async function getScanHistory(): Promise<ScanListItem[]> {
-    const res = await fetch(`${BASE_URL}s`); // /api/scans
-    if (!res.ok) throw new Error("Failed to fetch scan history");
+export async function listScans(limit = 50, offset = 0): Promise<ScanSummary[]> {
+    const res = await fetch(`/api/scans?limit=${limit}&offset=${offset}`);
+    if (!res.ok) throw new Error("Failed to fetch scans");
     return res.json();
 }
 

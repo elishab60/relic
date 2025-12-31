@@ -4,13 +4,18 @@ import { ScanLog } from "./types";
 export function useScanLogs(scanId: string | null) {
     const [logs, setLogs] = useState<ScanLog[]>([]);
     const [status, setStatus] = useState<string>("idle");
-    const [activeScanId, setActiveScanId] = useState<string | null>(null);
+    const [prevScanId, setPrevScanId] = useState<string | null>(scanId);
+
+    // Reset state immediately when scanId changes
+    if (scanId !== prevScanId) {
+        setLogs([]);
+        setStatus("idle");
+        setPrevScanId(scanId);
+    }
 
     useEffect(() => {
         if (!scanId) return;
 
-        // Reset state for new scan
-        setLogs([]);
         setStatus("running");
         setActiveScanId(scanId);
 
