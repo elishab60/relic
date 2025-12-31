@@ -178,8 +178,6 @@ function AuthorizationModal({
     );
 }
 
-import { useBoot } from '@/components/BootProvider';
-
 export default function Page() {
     const { hasBooted, setHasBooted } = useBootContext();
     const [target, setTarget] = useState('');

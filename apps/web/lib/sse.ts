@@ -4,23 +4,25 @@ import { ScanLog } from "./types";
 export function useScanLogs(scanId: string | null) {
     const [logs, setLogs] = useState<ScanLog[]>([]);
     const [status, setStatus] = useState<string>("idle");
-    const [prevScanId, setPrevScanId] = useState<string | null>(scanId);
+    const [activeScanId, setActiveScanId] = useState<string | null>(null);
 
     // Reset state immediately when scanId changes
-    if (scanId !== prevScanId) {
-        setLogs([]);
-        setStatus("idle");
-        setPrevScanId(scanId);
-    }
+    useEffect(() => {
+        if (scanId !== activeScanId) {
+            setLogs([]);
+            setStatus("idle");
+            setActiveScanId(scanId);
+        }
+    }, [scanId, activeScanId]);
 
     useEffect(() => {
         if (!scanId) return;
 
         setStatus("running");
-        setActiveScanId(scanId);
 
-        // Connect directly to backend
-        const eventSource = new EventSource(`http://localhost:8000/scan/${scanId}/events`);
+        // Connect directly to backend - use relative URL for Docker compatibility
+        const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:8000';
+        const eventSource = new EventSource(`${baseUrl}/api/scan/${scanId}/events`);
 
         eventSource.onmessage = (event) => {
             // Keep alive or generic messages
