@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { ScanSummary, ScanResult } from '@/lib/types';
 import { getResult } from '@/lib/api';
-import { ChevronDown, ChevronRight, Copy, Check, Shield, AlertTriangle, Clock, Target, Code, Terminal } from 'lucide-react';
+import { getProfileFromScanRecord, getProfileBadgeInfo, labelFromProfile } from '@/lib/scanConfig';
+import { ChevronDown, ChevronRight, Copy, Check, Shield, AlertTriangle, Clock, Target, Code, Terminal, Gauge } from 'lucide-react';
 
 interface ScanHistoryTableProps {
     scans: ScanSummary[];
@@ -87,6 +88,7 @@ export default function ScanHistoryTable({ scans }: ScanHistoryTableProps) {
                         <th className="text-left py-3 px-2 w-8"></th>
                         <th className="text-left py-3 px-2">Target</th>
                         <th className="text-left py-3 px-2 w-24">Status</th>
+                        <th className="text-left py-3 px-2 w-24">Profile</th>
                         <th className="text-left py-3 px-2 w-16">Grade</th>
                         <th className="text-left py-3 px-2 w-20">Findings</th>
                         <th className="text-left py-3 px-2 w-40">Date</th>
@@ -117,6 +119,18 @@ export default function ScanHistoryTable({ scans }: ScanHistoryTableProps) {
                                 <td className={`py-3 px-2 uppercase text-xs ${getStatusColor(scan.status)}`}>
                                     {scan.status}
                                 </td>
+                                {/* Profile Badge (PR-02b) */}
+                                <td className="py-3 px-2">
+                                    {(() => {
+                                        const profile = getProfileFromScanRecord(scan.config_json, null);
+                                        const badge = getProfileBadgeInfo(profile);
+                                        return (
+                                            <span className={`px-2 py-0.5 rounded border text-[10px] uppercase font-bold ${badge.colorClass}`}>
+                                                {badge.label}
+                                            </span>
+                                        );
+                                    })()}
+                                </td>
                                 <td className={`py-3 px-2 font-bold text-lg ${getGradeColor(scan.grade)}`}>
                                     {scan.grade || '-'}
                                 </td>
@@ -133,7 +147,7 @@ export default function ScanHistoryTable({ scans }: ScanHistoryTableProps) {
                             {/* Expanded Details */}
                             {expanded?.scanId === scan.scan_id && (
                                 <tr>
-                                    <td colSpan={6} className="bg-terminal-bgLight/50 border-b border-terminal-border">
+                                    <td colSpan={7} className="bg-terminal-bgLight/50 border-b border-terminal-border">
                                         <div className="p-4">
                                             {expanded.loading ? (
                                                 <div className="text-terminal-dim flex items-center gap-2">
@@ -181,6 +195,21 @@ function ScanDetails({ result, onCopyJson, copied }: { result: ScanResult; onCop
                 <div className="flex items-center gap-4">
                     <span className="text-terminal-dim text-xs">ID: {result.scan_id}</span>
                     <span className="text-terminal-dim text-xs">Score: {result.score}/100</span>
+                    {/* PR-02b: Show scan configuration */}
+                    {(() => {
+                        const profile = getProfileFromScanRecord(null, result as Record<string, any>);
+                        const badge = getProfileBadgeInfo(profile);
+                        return (
+                            <span className="text-terminal-dim text-xs flex items-center gap-1">
+                                <Gauge size={10} />
+                                Aggressiveness: <span className="text-terminal-text">{labelFromProfile(profile)}</span>
+                                <span className="text-terminal-dim mx-1">|</span>
+                                Profile: <span className={`px-1.5 py-0.5 rounded border text-[9px] uppercase font-bold ${badge.colorClass}`}>
+                                    {badge.label}
+                                </span>
+                            </span>
+                        );
+                    })()}
                 </div>
                 <button
                     onClick={onCopyJson}

@@ -24,9 +24,16 @@ router = APIRouter()
 
 from .scanner.engine import ScanEngine
 from .scanner.models import ScanLogEntry
+from .scanner.path_discovery import PathDiscoveryProfile
 
-async def run_scan_task(scan_id: str, target: str):
-    """Runs the real scan using ScanEngine."""
+async def run_scan_task(scan_id: str, target: str, config: dict = None):
+    """Runs the real scan using ScanEngine.
+    
+    Args:
+        scan_id: Unique scan identifier
+        target: URL to scan
+        config: Optional scan configuration dict with path_profile etc.
+    """
     engine = ScanEngine()
     
     # Initialize log buffer and callback for real-time updates
@@ -47,7 +54,8 @@ async def run_scan_task(scan_id: str, target: str):
     try:
         store.update_scan_status(scan_id, "running")
 
-        result = await engine.run_scan(target, log_callback)
+        # Pass config to engine (PR-02a)
+        result = await engine.run_scan(target, log_callback, config=config)
 
         # Convert dataclass result to Pydantic model dict
         findings_dicts = [
@@ -70,6 +78,10 @@ async def run_scan_task(scan_id: str, target: str):
             } for l in result.logs
         ]
 
+        # Inject config_used into debug_info for transparency (PR-02a)
+        debug_info = result.debug_info or {}
+        debug_info["config_used"] = config or {"path_profile": "standard"}
+
         # Create ScanResult Pydantic model
         scan_result = ScanResult(
             scan_id=scan_id,
@@ -81,7 +93,7 @@ async def run_scan_task(scan_id: str, target: str):
             logs=logs_dicts,
             timestamp=result.scanned_at,
             response_time_ms=result.response_time_ms,
-            debug_info=result.debug_info,
+            debug_info=debug_info,
             scan_status=result.scan_status,
             blocking_mechanism=result.blocking_mechanism,
             visibility_level=result.visibility_level
@@ -105,6 +117,9 @@ async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks):
     - authorized: true (user acknowledgement of permission to scan)
     - target: valid http/https URL
     
+    Optional:
+    - config: Scan configuration object with path_profile ("minimal", "standard", "thorough")
+    
     Returns:
     - 200: Scan started, returns scan_id
     - 400: Missing authorization acknowledgement or invalid URL
@@ -122,10 +137,15 @@ async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks):
             }
         )
 
-    # Create scan in DB
-    scan = store.create_scan(request.target)
+    # Extract effective config (PR-02a)
+    effective_config = request.get_effective_config()
+    config_dict = {"path_profile": effective_config.path_profile}
+    
+    # Create scan in DB with config persisted
+    scan = store.create_scan(request.target, config_json=config_dict)
 
-    background_tasks.add_task(run_scan_task, scan.id, request.target)
+    # Pass config to background task
+    background_tasks.add_task(run_scan_task, scan.id, request.target, config_dict)
 
     return ScanResponse(scan_id=scan.id)
 
@@ -391,7 +411,8 @@ async def list_scans(limit: int = 50, offset: int = 0):
             "finished_at": s.finished_at.isoformat() if s.finished_at else None,
             "score": s.score,
             "grade": s.grade,
-            "findings_count": len(s.result_json.get("findings", [])) if s.result_json else 0
+            "findings_count": len(s.result_json.get("findings", [])) if s.result_json else 0,
+            "config_json": s.config_json  # PR-02b: Include config for history display
         }
         for s in scans
     ]

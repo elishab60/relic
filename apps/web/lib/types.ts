@@ -13,6 +13,8 @@ export interface ScanSummary {
     score: number | null;
     grade: string | null;
     findings_count: number;
+    // PR-02b: Scan configuration
+    config_json?: Record<string, any> | null;
 }
 
 export interface Finding {

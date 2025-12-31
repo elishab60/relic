@@ -21,18 +21,41 @@ export interface PolicyError {
 }
 
 /**
+ * Scan configuration options.
+ */
+export interface ScanConfigPayload {
+    path_profile: "minimal" | "standard" | "thorough";
+}
+
+/**
  * Start a security scan against a target.
  * 
  * @param target - URL or hostname to scan
  * @param authorized - User acknowledgement that they have permission to scan
+ * @param config - Optional scan configuration (path_profile, etc.)
  * @returns Object with scan_id if successful
  * @throws Error with detailed message if policy check fails
  */
-export async function startScan(target: string, authorized: boolean = false): Promise<{ scan_id: string }> {
+export async function startScan(
+    target: string,
+    authorized: boolean = false,
+    config?: ScanConfigPayload
+): Promise<{ scan_id: string }> {
+    const payload: {
+        target: string;
+        authorized: boolean;
+        config?: ScanConfigPayload;
+    } = { target, authorized };
+
+    // Include config if provided
+    if (config) {
+        payload.config = config;
+    }
+
     const res = await fetch(`${BASE_URL}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target, authorized }),
+        body: JSON.stringify(payload),
     });
 
     if (!res.ok) {

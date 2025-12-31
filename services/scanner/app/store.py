@@ -12,9 +12,9 @@ create_db_and_tables()
 # scan_id -> list of log dicts
 active_scans: Dict[str, List[Dict[str, Any]]] = {}
 
-def create_scan(target: str) -> Scan:
+def create_scan(target: str, config_json: Dict[str, Any] = None) -> Scan:
     with Session(engine) as session:
-        scan = Scan(target=target, status="queued")
+        scan = Scan(target=target, status="queued", config_json=config_json)
         session.add(scan)
         session.commit()
         session.refresh(scan)

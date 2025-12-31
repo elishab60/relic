@@ -1,8 +1,30 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 from sqlmodel import Field, SQLModel, JSON
 import uuid
+
+
+# =============================================================================
+# SCAN CONFIGURATION MODELS (PR-02a)
+# =============================================================================
+
+# Valid path discovery profile values
+PathProfileLiteral = Literal["minimal", "standard", "thorough"]
+
+
+class ScanConfig(BaseModel):
+    """
+    Configuration options for a security scan.
+    
+    Attributes:
+        path_profile: Discovery profile controlling scan depth.
+                      - "minimal": ~13 paths (fast, legacy behavior)
+                      - "standard": ~50 paths (default, balanced)
+                      - "thorough": ~115 paths (deep scan, bounded)
+    """
+    path_profile: PathProfileLiteral = "standard"
+
 
 class ScanRequest(BaseModel):
     """
@@ -12,9 +34,15 @@ class ScanRequest(BaseModel):
         target: URL or hostname to scan
         authorized: User acknowledgement that they have permission to scan the target.
                     This field is REQUIRED and must be True for the scan to proceed.
+        config: Optional scan configuration. If absent, defaults are applied.
     """
     target: str
     authorized: bool = False  # Default to False to require explicit acknowledgement
+    config: Optional[ScanConfig] = None
+    
+    def get_effective_config(self) -> ScanConfig:
+        """Returns the effective config, applying defaults if not provided."""
+        return self.config if self.config else ScanConfig()
 
 class ScanLog(BaseModel):
     timestamp: datetime
@@ -77,6 +105,9 @@ class Scan(SQLModel, table=True):
     # Storing complex objects as JSON
     result_json: Optional[Dict[str, Any]] = Field(default=None, sa_type=JSON)
     logs_json: List[Dict[str, Any]] = Field(default_factory=list, sa_type=JSON)
+    
+    # PR-02a: Scan configuration (persisted)
+    config_json: Optional[Dict[str, Any]] = Field(default=None, sa_type=JSON)
     
     # Summary fields for easy querying
     score: Optional[int] = None

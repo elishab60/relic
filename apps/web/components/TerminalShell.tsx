@@ -2,7 +2,12 @@ import React from 'react';
 import Link from 'next/link';
 import { History } from 'lucide-react';
 
-export default function TerminalShell({ children }: { children: React.ReactNode }) {
+interface TerminalShellProps {
+    children: React.ReactNode;
+    headerActions?: React.ReactNode;
+}
+
+export default function TerminalShell({ children, headerActions }: TerminalShellProps) {
     return (
         <div className="min-h-screen bg-terminal-bg p-4 md:p-8 flex flex-col">
             <header className="mb-8 border-b border-terminal-border pb-6 flex items-start justify-between">
@@ -18,14 +23,19 @@ export default function TerminalShell({ children }: { children: React.ReactNode 
                     </Link>
                 </div>
 
-                {/* Navigation */}
-                <Link
-                    href="/history"
-                    className="flex items-center gap-2 px-4 py-2 rounded border border-terminal-border text-terminal-text hover:bg-terminal-border/30 hover:text-terminal-textBright transition-all group"
-                >
-                    <History size={18} className="group-hover:scale-110 transition-transform" />
-                    <span className="font-mono text-sm hidden md:inline">History</span>
-                </Link>
+                {/* Navigation & Actions */}
+                <div className="flex items-center gap-3">
+                    {/* Optional header actions (e.g., Settings button) */}
+                    {headerActions}
+
+                    <Link
+                        href="/history"
+                        className="flex items-center gap-2 px-4 py-2 rounded border border-terminal-border text-terminal-text hover:bg-terminal-border/30 hover:text-terminal-textBright transition-all group"
+                    >
+                        <History size={18} className="group-hover:scale-110 transition-transform" />
+                        <span className="font-mono text-sm hidden md:inline">History</span>
+                    </Link>
+                </div>
             </header>
 
             <main className="flex-1 flex flex-col gap-6 max-w-7xl mx-auto w-full">
@@ -45,3 +55,4 @@ export default function TerminalShell({ children }: { children: React.ReactNode 
         </div>
     );
 }
+
