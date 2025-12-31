@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ScanSummary, ScanResult } from '@/lib/types';
 import { getResult } from '@/lib/api';
-import { ChevronDown, ChevronRight, Copy, Check, ExternalLink, Shield, AlertTriangle, Clock, Target } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Check, Shield, AlertTriangle, Clock, Target, Code, Terminal } from 'lucide-react';
 
 interface ScanHistoryTableProps {
     scans: ScanSummary[];
@@ -28,6 +28,16 @@ function getStatusColor(status: string): string {
         case 'running': return 'text-terminal-text animate-pulse';
         case 'failed': return 'text-terminal-red';
         default: return 'text-terminal-dim';
+    }
+}
+
+function getConfidenceColor(confidence?: string): string {
+    if (!confidence) return 'text-terminal-dim border-terminal-dim';
+    switch (confidence.toLowerCase()) {
+        case 'high': return 'text-green-400 border-green-400';
+        case 'medium': return 'text-yellow-400 border-yellow-400';
+        case 'low': return 'text-terminal-dim border-terminal-dim';
+        default: return 'text-terminal-dim border-terminal-dim';
     }
 }
 
@@ -156,6 +166,13 @@ export default function ScanHistoryTable({ scans }: ScanHistoryTableProps) {
 
 function ScanDetails({ result, onCopyJson, copied }: { result: ScanResult; onCopyJson: () => void; copied: boolean }) {
     const [showRaw, setShowRaw] = useState(false);
+    const [copiedCurl, setCopiedCurl] = useState<number | null>(null);
+
+    const copyToClipboard = (text: string, index: number) => {
+        navigator.clipboard.writeText(text);
+        setCopiedCurl(index);
+        setTimeout(() => setCopiedCurl(null), 2000);
+    };
 
     return (
         <div className="space-y-4">
@@ -181,25 +198,80 @@ function ScanDetails({ result, onCopyJson, copied }: { result: ScanResult; onCop
                         <Shield size={12} />
                         Findings ({result.findings.length})
                     </h4>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         {result.findings.map((finding, i) => (
                             <div key={i} className="terminal-box p-3 text-xs">
-                                <div className="flex justify-between mb-1">
+                                {/* Title and badges */}
+                                <div className="flex justify-between items-start mb-2">
                                     <span className="font-bold text-terminal-textBright">{finding.title}</span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${finding.severity === 'critical' || finding.severity === 'high'
-                                        ? 'bg-terminal-red/20 text-terminal-red border border-terminal-red/30'
-                                        : finding.severity === 'medium'
-                                            ? 'bg-terminal-text/20 text-terminal-text border border-terminal-text/30'
-                                            : 'bg-terminal-dim/20 text-terminal-dim border border-terminal-dim/30'
-                                        }`}>
-                                        {finding.severity}
-                                    </span>
+                                    <div className="flex gap-2 flex-shrink-0">
+                                        {finding.confidence && (
+                                            <span className={`px-2 py-0.5 rounded border text-[10px] uppercase font-bold ${getConfidenceColor(finding.confidence)}`}>
+                                                {finding.confidence}
+                                            </span>
+                                        )}
+                                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${finding.severity === 'critical' || finding.severity === 'high'
+                                            ? 'bg-terminal-red/20 text-terminal-red border border-terminal-red/30'
+                                            : finding.severity === 'medium'
+                                                ? 'bg-terminal-text/20 text-terminal-text border border-terminal-text/30'
+                                                : 'bg-terminal-dim/20 text-terminal-dim border border-terminal-dim/30'
+                                            }`}>
+                                            {finding.severity}
+                                        </span>
+                                    </div>
                                 </div>
+
+                                {/* Impact */}
                                 <p className="text-terminal-dim mb-1">{finding.impact}</p>
+
+                                {/* Recommendation */}
                                 {finding.recommendation && (
-                                    <p className="text-terminal-text">
+                                    <p className="text-terminal-text mb-2">
                                         <span className="text-terminal-accent">▸ FIX:</span> {finding.recommendation}
                                     </p>
+                                )}
+
+                                {/* Evidence Section (PR-01) */}
+                                {finding.evidence_snippet && (
+                                    <div className="mt-3 bg-black/30 p-2 rounded border border-terminal-border/50">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold text-terminal-dim uppercase flex items-center gap-1">
+                                                <Code size={10} /> Evidence
+                                            </span>
+                                            {finding.evidence_hash && (
+                                                <span className="text-[9px] font-mono text-terminal-dim">
+                                                    SHA256: {finding.evidence_hash.substring(0, 8)}...
+                                                </span>
+                                            )}
+                                        </div>
+                                        <pre className="text-[10px] font-mono text-terminal-text overflow-x-auto whitespace-pre-wrap break-all max-h-24 overflow-y-auto">
+                                            {finding.evidence_snippet}
+                                        </pre>
+                                    </div>
+                                )}
+
+                                {/* Reproduction Section (PR-01) */}
+                                {finding.repro_curl && (
+                                    <div className="mt-3">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold text-terminal-dim uppercase flex items-center gap-1">
+                                                <Terminal size={10} /> Reproduction
+                                            </span>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    copyToClipboard(finding.repro_curl!, i);
+                                                }}
+                                                className="text-[10px] flex items-center gap-1 text-terminal-dim hover:text-terminal-text transition-colors"
+                                            >
+                                                {copiedCurl === i ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
+                                                {copiedCurl === i ? 'Copied' : 'Copy'}
+                                            </button>
+                                        </div>
+                                        <div className="bg-black/50 p-2 rounded border border-terminal-border/50 font-mono text-[10px] text-terminal-text overflow-x-auto">
+                                            {finding.repro_curl}
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         ))}
