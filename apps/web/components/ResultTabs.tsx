@@ -34,10 +34,20 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
     const getConfidenceColor = (confidence?: string) => {
         if (!confidence) return 'text-terminal-dim border-terminal-dim';
         switch (confidence.toLowerCase()) {
-            case 'high': return 'text-green-400 border-green-400';
-            case 'medium': return 'text-yellow-400 border-yellow-400';
+            case 'high': return 'text-red-400 border-red-400';
+            case 'medium': return 'text-orange-400 border-orange-400';
             case 'low': return 'text-terminal-dim border-terminal-dim';
             default: return 'text-terminal-dim border-terminal-dim';
+        }
+    };
+
+    const getConfidenceLabel = (confidence?: string) => {
+        if (!confidence) return 'Confidence: unknown';
+        switch (confidence.toLowerCase()) {
+            case 'high': return 'High confidence';
+            case 'medium': return 'Medium confidence';
+            case 'low': return 'Low confidence';
+            default: return 'Confidence: unknown';
         }
     };
 
@@ -110,11 +120,9 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                                     {finding.title}
                                 </span>
                                 <div className="flex gap-2">
-                                    {finding.confidence && (
-                                        <span className={`text-xs px-2 py-0.5 rounded border font-bold uppercase ${getConfidenceColor(finding.confidence)}`}>
-                                            CONFIDENCE: {finding.confidence}
-                                        </span>
-                                    )}
+                                    <span className={`text-xs px-2 py-0.5 rounded border ${getConfidenceColor(finding.confidence)}`}>
+                                        {getConfidenceLabel(finding.confidence)}
+                                    </span>
                                     <span className={`text-xs px-2 py-0.5 rounded border font-bold uppercase ${getSeverityClass(finding.severity)}`}>
                                         {finding.severity}
                                     </span>
