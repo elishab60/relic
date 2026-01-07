@@ -15,6 +15,7 @@ from .scoring import calculate_score
 from .port_scanner import scan_ports
 from .path_discovery import PathDiscoverer, PathDiscoveryProfile, get_crawl_limit_for_profile
 from .waf_detection import detect_waf_and_visibility
+from .tech_fingerprint import TechFingerprinter
 from ..config import settings
 from ..constants import Severity, Category, ScanStatus, VisibilityLevel
 
@@ -181,6 +182,37 @@ class ScanEngine:
                 except Exception as e:
                     await log("ERROR", f"TLS check failed: {e}")
             
+            # Tech Fingerprinting (before other checks)
+            tech_fingerprint_data = None
+            try:
+                await log("INFO", "Running tech fingerprinting...")
+                fingerprinter = TechFingerprinter(
+                    http_client=self.http_client,
+                    log_callback=log,
+                    max_probes=3,
+                    timeout=settings.DEFAULT_TIMEOUT
+                )
+                tech_result = await fingerprinter.fingerprint(
+                    url=target_info.full_url,
+                    response_html=response.text if hasattr(response, 'text') else "",
+                    response_headers=dict(response.headers),
+                    status_code=response.status_code,
+                    perform_404_probe=True
+                )
+                tech_fingerprint_data = tech_result.to_dict()
+                
+                # Log detected technologies summary
+                if tech_result.technologies:
+                    tech_names = [t.name for t in tech_result.technologies[:5]]
+                    suffix = f"... (+{len(tech_result.technologies) - 5} more)" if len(tech_result.technologies) > 5 else ""
+                    await log("INFO", f"Technologies detected: {', '.join(tech_names)}{suffix}")
+                else:
+                    await log("INFO", "No technologies detected via fingerprinting")
+                    
+            except Exception as e:
+                await log("WARNING", f"Tech fingerprinting failed: {e}")
+                tech_fingerprint_data = {"error": str(e)}
+
             # Header Checks
             await log("INFO", "Analyzing HTTP headers...")
             header_findings = check_security_headers(response.headers)
@@ -394,7 +426,8 @@ class ScanEngine:
                 "discovered_paths": discovered_paths,
                 "ports": [p.model_dump() for p in port_scan_results],
                 "network_exposure": network_exposure,
-                "http_traffic": self.http_client.history
+                "http_traffic": self.http_client.history,
+                "tech_fingerprint": tech_fingerprint_data
             }
             
             waf_info = detect_waf_and_visibility(debug_info)

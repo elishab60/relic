@@ -497,6 +497,60 @@ def generate_markdown(result: ScanResult) -> str:
         md += f"| {sev.title()} | {count} |\n"
     md += "\n"
 
+    # Tech Stack Section (if available in debug_info)
+    if result.debug_info and result.debug_info.get("tech_fingerprint"):
+        tech_fp = result.debug_info["tech_fingerprint"]
+        technologies = tech_fp.get("technologies", [])
+        
+        if technologies:
+            md += "## Tech Stack\n\n"
+            md += f"*{len(technologies)} technologies detected*\n\n"
+            
+            # Group by category
+            by_category = {}
+            for tech in technologies:
+                cat = tech.get("category", "unknown")
+                if cat not in by_category:
+                    by_category[cat] = []
+                by_category[cat].append(tech)
+            
+            # Category labels
+            category_labels = {
+                "frontend_framework": "Frontend Frameworks",
+                "backend_runtime": "Backend/Runtime",
+                "cms": "CMS",
+                "ecommerce": "E-commerce",
+                "server": "Web Servers",
+                "cdn": "CDN",
+                "waf": "WAF",
+                "hosting": "Hosting",
+                "analytics": "Analytics",
+                "tag_manager": "Tag Managers",
+                "api_style": "API Style",
+                "database": "Database",
+                "javascript_library": "JavaScript Libraries",
+                "build_tool": "Build Tools",
+                "unknown": "Other",
+            }
+            
+            for cat, techs in by_category.items():
+                label = category_labels.get(cat, cat.replace("_", " ").title())
+                md += f"### {label}\n\n"
+                for tech in techs:
+                    name = tech.get("name", "Unknown")
+                    version = tech.get("version", "")
+                    confidence = tech.get("confidence", "medium")
+                    version_str = f" v{version}" if version else ""
+                    md += f"- **{name}**{version_str} (confidence: {confidence})\n"
+                md += "\n"
+            
+            # Detection methods
+            methods = tech_fp.get("detection_methods", [])
+            if methods:
+                clean_methods = [m for m in methods if "unavailable" not in m]
+                if clean_methods:
+                    md += f"*Detection methods: {', '.join(clean_methods)}*\n\n"
+
     md += "## Detailed Findings\n\n"
     if not result.findings:
         md += "No vulnerabilities found.\n"

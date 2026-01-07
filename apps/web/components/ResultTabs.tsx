@@ -4,6 +4,7 @@ import { Bot, Code, AlertTriangle, Shield, Target, Copy, Check, Terminal } from 
 import { getAiDebug } from '@/lib/api';
 import AiProviderToggle from './AiProviderToggle';
 import AiAnalysisSection from './AiAnalysisSection';
+import TechStackSection from './TechStackSection';
 
 export default function ResultTabs({ result }: { result: ScanResult | null }) {
     const [showAiDebug, setShowAiDebug] = useState(false);
@@ -87,6 +88,9 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                     </div>
                 </div>
             </div>
+
+            {/* Tech Stack Section */}
+            <TechStackSection fingerprint={result.debug_info?.tech_fingerprint} />
 
             {/* Findings List */}
             <div className="space-y-4">
