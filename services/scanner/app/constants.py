@@ -61,6 +61,32 @@ class Severity(str, Enum):
     
     def __str__(self) -> str:
         return self.value
+    
+    @property
+    def level(self) -> int:
+        """Return numeric level for comparison (INFO=0, LOW=1, MEDIUM=2, HIGH=3, CRITICAL=4)."""
+        _levels = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+        return _levels.get(self.value, 0)
+    
+    def __ge__(self, other: "Severity") -> bool:
+        if not isinstance(other, Severity):
+            return NotImplemented
+        return self.level >= other.level
+    
+    def __gt__(self, other: "Severity") -> bool:
+        if not isinstance(other, Severity):
+            return NotImplemented
+        return self.level > other.level
+    
+    def __le__(self, other: "Severity") -> bool:
+        if not isinstance(other, Severity):
+            return NotImplemented
+        return self.level <= other.level
+    
+    def __lt__(self, other: "Severity") -> bool:
+        if not isinstance(other, Severity):
+            return NotImplemented
+        return self.level < other.level
 
 
 class LogLevel(str, Enum):

@@ -40,13 +40,30 @@ class Finding:
     repro_curl: Optional[str] = None
     evidence_snippet: Optional[str] = None
     evidence_hash: Optional[str] = None
+    # New fields for PR-03
+    response_time_ms: Optional[int] = None
+    payload_used: Optional[str] = None
     
     def __post_init__(self):
-        """Normalize severity and category to enum values."""
+        """Normalize severity and category to enum values, then enforce evidence contract."""
         if isinstance(self.severity, str):
             self.severity = Severity.from_string(self.severity)
         if isinstance(self.category, str):
             self.category = Category.from_string(self.category)
+        
+        # PR-03: Evidence Contract Enforcement
+        # Actionable categories that MUST have evidence and repro_curl if severity >= MEDIUM
+        actionable_categories = {Category.XSS, Category.SQLI, Category.CORS, Category.EXPOSURE}
+        
+        if isinstance(self.severity, Severity) and self.severity >= Severity.MEDIUM:
+            if self.category in actionable_categories:
+                has_evidence = bool(self.evidence) or bool(self.evidence_snippet)
+                has_repro = bool(self.repro_curl)
+                
+                if not has_evidence or not has_repro:
+                    # Contract violated: downgrade finding
+                    self.severity = Severity.INFO
+                    self.confidence = "low"
 
 
 

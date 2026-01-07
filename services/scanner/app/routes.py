@@ -66,7 +66,14 @@ async def run_scan_task(scan_id: str, target: str, config: dict = None):
                 "description": f.description,
                 "recommendation": f.recommendation,
                 "evidence": f.evidence,
-                "owasp_refs": f.owasp_refs
+                "owasp_refs": f.owasp_refs,
+                # PR-01/PR-03 fields
+                "confidence": f.confidence,
+                "repro_curl": f.repro_curl,
+                "evidence_snippet": f.evidence_snippet,
+                "evidence_hash": f.evidence_hash,
+                "response_time_ms": getattr(f, 'response_time_ms', None),
+                "payload_used": getattr(f, 'payload_used', None),
             } for f in result.findings
         ]
 
