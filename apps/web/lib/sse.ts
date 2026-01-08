@@ -21,10 +21,14 @@ export function useScanLogs(scanId: string | null) {
 
         setStatus("running");
 
-        // Use the Next.js API route which proxies to the scanner backend
-        // This works in both local dev and Docker environments
-        // The route is configured to disable buffering for real-time streaming
-        const sseUrl = `/api/scan/${scanId}/events`;
+        // Connect DIRECTLY to the scanner backend for real-time SSE streaming
+        // The Next.js proxy buffers responses despite X-Accel-Buffering header
+        // In Docker Compose, port 8000 is exposed to localhost
+        // In production, ensure scanner is accessible or use a proper SSE proxy
+        const scannerBaseUrl = typeof window !== 'undefined'
+            ? (process.env.NEXT_PUBLIC_SCANNER_URL || 'http://localhost:8000')
+            : 'http://localhost:8000';
+        const sseUrl = `${scannerBaseUrl}/scan/${scanId}/events`;
         const eventSource = new EventSource(sseUrl);
 
         eventSource.onmessage = (event) => {

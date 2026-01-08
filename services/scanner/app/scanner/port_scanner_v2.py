@@ -567,25 +567,41 @@ async def scan_ports_v2(
     2. Validates services before marking as open
     3. Classifies ports into confirmed/suspected/catchall
     4. Aggressive but accurate
-    5. Real-time progress logging
+    5. Real-time progress logging with spinners
     """
     start_time = datetime.now(timezone.utc)
+    
+    # ASCII characters for visual feedback (no emojis for terminal compatibility)
+    SPINNER = ["/", "-", "\\", "|"]
+    CHECK = "[OK]"
+    FAIL = "[!!]"
+    WARN = "[!]"
+    ARROW = "-->"
     
     async def log(level: str, msg: str):
         if log_callback:
             await log_callback(level, msg)
         logger.info(f"[{level}] {msg}")
     
-    await log("info", f"[PORT-V2] Starting validated port scan on {target}")
-    await log("info", f"[PORT-V2] Profile: {profile.value}")
+    # =========================================================================
+    # PHASE 1: Initialization
+    # =========================================================================
+    await log("info", "[PORT-SCAN] Starting validated network scan")
+    await log("info", f"{ARROW} Target: {target}")
+    await log("info", f"{ARROW} Profile: {profile.value.upper()} ({len(get_ports_for_profile(profile))} ports)")
     
-    # Resolve hostname
+    # =========================================================================
+    # PHASE 2: DNS Resolution
+    # =========================================================================
+    await log("info", f"{SPINNER[0]} Resolving DNS for {target}...")
+    
     try:
         ip_info = socket.getaddrinfo(target, None, socket.AF_INET)
         resolved_ips = list(set([info[4][0] for info in ip_info]))
         primary_ip = resolved_ips[0]
+        await log("info", f"{CHECK} DNS resolved: {', '.join(resolved_ips)}")
     except socket.gaierror as e:
-        await log("error", f"[PORT-V2] DNS resolution failed: {e}")
+        await log("error", f"{FAIL} DNS resolution failed: {e}")
         return [], ScanSummary(
             profile=profile.value,
             target=target,
@@ -595,29 +611,38 @@ async def scan_ports_v2(
             cdn_detected=False
         )
     
-    await log("info", f"[PORT-V2] Resolved to: {', '.join(resolved_ips)}")
+    # =========================================================================
+    # PHASE 3: CDN Detection
+    # =========================================================================
+    await log("info", f"{SPINNER[1]} Detecting CDN/WAF infrastructure...")
     
-    # Detect CDN
     is_cdn, cdn_provider = await detect_cdn(target, primary_ip)
     if is_cdn:
-        await log("warning", f"[PORT-V2] CDN detected: {cdn_provider} - will validate services")
+        await log("warning", f"{WARN} CDN detected: {cdn_provider.upper()}")
+        await log("info", f"    {ARROW} Will validate services to filter catch-all TCP ports")
+    else:
+        await log("info", f"{CHECK} No CDN detected - standard scan mode")
     
-    # Get ports to scan
+    # =========================================================================
+    # PHASE 4: Port Scanning with Service Validation
+    # =========================================================================
     ports = get_ports_for_profile(profile)
     total_ports = len(ports)
-    await log("info", f"[PORT-V2] Scanning {total_ports} ports with validation layer")
+    
+    await log("info", f"[PORTS] SCANNING {total_ports} PORTS (concurrency: {concurrency})")
     
     # Progress tracking
     scanned_count = 0
-    last_progress_log = 0
+    last_progress_pct = -1
     confirmed_ports = []
+    spinner_idx = 0
     
-    # Scan with concurrency limit and progress tracking
+    # Scan with concurrency limit and detailed progress
     semaphore = asyncio.Semaphore(concurrency)
     results: List[PortResult] = []
     
     async def scan_with_sem(port: int) -> PortResult:
-        nonlocal scanned_count, last_progress_log
+        nonlocal scanned_count, last_progress_pct, spinner_idx
         async with semaphore:
             result = await scan_port_with_validation(
                 host=target,
@@ -630,23 +655,39 @@ async def scan_ports_v2(
             # Update progress
             scanned_count += 1
             progress_pct = (scanned_count * 100) // total_ports
+            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
             
-            # Log progress every 10% for large scans, or every 20 ports for small scans
-            progress_interval = 10 if total_ports > 100 else 25
-            if progress_pct >= last_progress_log + progress_interval:
-                last_progress_log = (progress_pct // progress_interval) * progress_interval
-                elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-                await log("info", f"[PORT-V2] Progress: {scanned_count}/{total_ports} ports ({progress_pct}%) - {elapsed:.1f}s elapsed")
+            # Estimate remaining time
+            if scanned_count > 10:
+                rate = scanned_count / elapsed
+                remaining = (total_ports - scanned_count) / rate
+                eta_str = f"~{int(remaining)}s remaining"
+            else:
+                eta_str = "calculating..."
             
-            # Log confirmed open ports immediately
+            # Log every 5% for large scans, or every 10% for small scans
+            progress_interval = 5 if total_ports > 200 else 10
+            if progress_pct >= last_progress_pct + progress_interval:
+                last_progress_pct = (progress_pct // progress_interval) * progress_interval
+                spinner_idx = (spinner_idx + 1) % len(SPINNER)
+                
+                # Create visual progress bar
+                bar_width = 20
+                filled = int(bar_width * progress_pct / 100)
+                bar = "#" * filled + "." * (bar_width - filled)
+                
+                await log("info", f"{SPINNER[spinner_idx]} [{bar}] {progress_pct:3d}% | {scanned_count}/{total_ports} ports | {elapsed:.1f}s | {eta_str}")
+            
+            # Log confirmed open ports immediately with details
             if result.final_state == PortState.OPEN_CONFIRMED:
                 confirmed_ports.append(result)
                 service = result.service_confirmed or result.service_guess or "unknown"
-                await log("info", f"[PORT-V2] ✓ Port {port}/{service} CONFIRMED OPEN (banner: {(result.banner or '')[:50]}...)")
+                banner_preview = (result.banner or "")[:40].replace("\n", " ").replace("\r", "")
+                await log("info", f"    {CHECK} Port {port:5d}/tcp OPEN --> {service.upper():12s} | {banner_preview}")
             
             return result
     
-    # Run scans with batched progress updates
+    # Run scans
     tasks = [scan_with_sem(port) for port in ports]
     results = await asyncio.gather(*tasks)
     
@@ -675,22 +716,34 @@ async def scan_ports_v2(
         nmap_available=shutil.which("nmap") is not None
     )
     
-    # Log final results
+    # =========================================================================
+    # PHASE 5: Results Summary
+    # =========================================================================
     confirmed = [r for r in results if r.final_state == PortState.OPEN_CONFIRMED]
     suspected = [r for r in results if r.final_state == PortState.OPEN_SUSPECTED]
     catchall = [r for r in results if r.final_state == PortState.CDN_CATCHALL]
     
-    await log("info", f"[PORT-V2] Scan completed in {duration_ms}ms")
-    await log("info", f"[PORT-V2] Results: {summary.open_confirmed_count} confirmed, "
-                      f"{summary.open_suspected_count} suspected, "
-                      f"{summary.cdn_catchall_count} CDN catchall")
+    await log("info", "[RESULTS] PORT SCAN COMPLETE")
+    await log("info", f"    Duration:        {duration_ms/1000:.1f}s")
+    await log("info", f"    Ports scanned:   {total_ports}")
+    await log("info", f"    {CHECK} Open confirmed:  {summary.open_confirmed_count}")
+    await log("info", f"    {WARN} Open suspected:  {summary.open_suspected_count}")
+    if is_cdn:
+        await log("info", f"    [--] CDN catch-all:  {summary.cdn_catchall_count} (ignored)")
+    await log("info", f"    {FAIL} Filtered:        {summary.filtered_count}")
+    await log("info", f"    {FAIL} Closed:          {summary.closed_count}")
     
     if confirmed:
-        ports_str = ", ".join([f"{r.port}/{r.service_confirmed}" for r in confirmed])
-        await log("info", f"[PORT-V2] CONFIRMED OPEN: {ports_str}")
+        await log("info", "")
+        await log("info", "[OPEN] CONFIRMED OPEN SERVICES:")
+        for r in confirmed:
+            risk_icon = "[HIGH]" if r.risk_level == "high" else "[MED]" if r.risk_level == "medium" else "[LOW]"
+            service = r.service_confirmed or "unknown"
+            await log("info", f"    {risk_icon} {r.port:5d}/tcp --> {service.upper()}")
     
-    if catchall and is_cdn:
-        await log("info", f"[PORT-V2] CDN catchall detected on {len(catchall)} ports (ignored for scoring)")
+    if is_cdn and catchall:
+        await log("info", f"[INFO] {len(catchall)} ports ignored (CDN accepts all TCP connections)")
+    
     
     return results, summary
 

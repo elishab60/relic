@@ -16,6 +16,7 @@ class HttpClient:
         self.consecutive_errors = 0
         self.current_delay = config.RATE_LIMIT_DELAY
         self.request_timestamps = [] # For sliding window
+        self._lock = asyncio.Lock() # Guard for rate limiting state
 
     async def __aenter__(self):
         self.client = httpx.AsyncClient(
@@ -38,7 +39,10 @@ class HttpClient:
         # 1. Basic Delay
         elapsed = now - self.last_request_time
         if elapsed < self.current_delay:
-            await asyncio.sleep(self.current_delay - elapsed)
+            wait_time = self.current_delay - elapsed
+            await asyncio.sleep(wait_time)
+            # Update now after sleep
+            now = time.time()
             
         # 2. Adaptive: Requests per minute
         if self.config.ADAPTIVE_RATE_LIMIT:
@@ -49,7 +53,8 @@ class HttpClient:
                 # Wait until oldest expires
                 if self.request_timestamps:
                     oldest = self.request_timestamps[0]
-                    wait_time = 60 - (now - oldest)
+                    # Add a small buffer to ensure we are past the minute mark
+                    wait_time = 60 - (now - oldest) + 0.1
                     if wait_time > 0:
                         if self.log_callback:
                             await self.log_callback("WARNING", f"Rate limit reached ({self.config.MAX_REQUESTS_PER_MINUTE} rpm). Slowing down for {wait_time:.2f}s.")
@@ -59,39 +64,48 @@ class HttpClient:
         if not self.client:
             raise RuntimeError("HttpClient not initialized. Use 'async with'.")
 
-        await self._wait_for_rate_limit()
+        # Rate limiting critical section
+        async with self._lock:
+            await self._wait_for_rate_limit()
+            # Mark the "start" of this request for rate limiting purposes
+            # This ensures the next concurrent request sees this timestamp and waits
+            self.last_request_time = time.time()
+            self.request_timestamps.append(self.last_request_time)
 
         try:
             start_time = time.time()
+            # Timeout handled by client settings, but we wrap to catch errors
             response = await self.client.request(method, url, **kwargs)
             latency = time.time() - start_time
             
-            self.last_request_time = time.time()
-            self.request_timestamps.append(self.last_request_time)
-            
             self.history.append({
-                "timestamp": self.last_request_time,
+                "timestamp": start_time,
                 "method": method,
                 "url": url,
                 "status": response.status_code,
                 "latency": latency
             })
             
-            # Adaptive Logic
+            # Adaptive Logic (safe to run concurrently mostly, but race conditions on consecutive_errors acceptable)
             if self.config.ADAPTIVE_RATE_LIMIT:
                 if response.status_code >= 500 or latency > self.config.LATENCY_THRESHOLD:
                     self.consecutive_errors += 1
                     if self.consecutive_errors >= self.config.ERROR_THRESHOLD:
                         # Increase delay
-                        self.current_delay = min(self.current_delay * 2, 5.0) # Cap at 5s
-                        if self.log_callback:
-                            await self.log_callback("WARNING", f"High errors/latency detected. Increasing delay to {self.current_delay:.2f}s")
+                        new_delay = min(self.current_delay * 2, 5.0) # Cap at 5s
+                        
+                        # Only log if delay actually changed significantly to avoid spam
+                        if new_delay > self.current_delay and self.log_callback:
+                             await self.log_callback("WARNING", f"High errors/latency detected. Increasing delay to {new_delay:.2f}s")
+                             
+                        self.current_delay = new_delay
                         self.consecutive_errors = 0 # Reset counter after adjustment
                 else:
                     # Success - slowly decrease delay back to normal
                     if self.consecutive_errors > 0:
-                        self.consecutive_errors -= 1
+                        self.consecutive_errors = max(0, self.consecutive_errors - 1)
                     else:
+                        # Decrease delay, but don't go below min
                         self.current_delay = max(self.config.RATE_LIMIT_DELAY, self.current_delay * 0.9)
 
             return response

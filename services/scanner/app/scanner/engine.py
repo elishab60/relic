@@ -76,18 +76,29 @@ class ScanEngine:
         async with HttpClient(config=settings, log_callback=http_log_adapter) as http_client:
             self.http_client = http_client
             
-            await log("INFO", f"Starting scan for target: {target_input}")
+            # ASCII indicators for logs (no emojis for terminal compatibility)
+            SPIN = "/"
+            CHECK = "[OK]"
+            FAIL = "[!!]"
+            WARN = "[!]"
+            ARROW = "-->"
+            
+            await log("INFO", "[SECURITY-SCAN] SCAN INITIATED")
+            await log("INFO", f"{ARROW} Target: {target_input}")
+            await log("INFO", f"{ARROW} Path Profile: {path_profile.value}")
+            await log("INFO", f"{ARROW} Port Profile: {port_scan_profile.value}")
 
             # Normalization
+            await log("INFO", f"{SPIN} Normalizing target URL...")
             try:
                 target_info = normalize_target(target_input)
-                await log("INFO", f"Normalized target: {target_info.full_url}")
+                await log("INFO", f"{CHECK} Target normalized: {target_info.full_url}")
             except Exception as e:
-                await log("ERROR", f"Failed to normalize target: {e}")
+                await log("ERROR", f"{FAIL} Failed to normalize target: {e}")
                 return self._build_error_result(target_input, logs, start_time, "Normalization Error")
 
             # Parallelize Initial Checks: DNS, Port Scan, Initial HTTP
-            await log("INFO", "Starting parallel checks: DNS, Ports, Initial HTTP...")
+            await log("INFO", "[INIT] PARALLEL INITIALIZATION (DNS + Ports + HTTP)")
             
             async def task_dns():
                 try:
@@ -174,41 +185,53 @@ class ScanEngine:
                     return self._build_result(target_info.full_url, findings, logs, start_time)
                 
                 response = results[1]
-                await log("INFO", f"Received response: {response.status_code}")
+                await log("INFO", f"{CHECK} HTTP response received: {response.status_code}")
                 
             except Exception as e:
-                await log("ERROR", f"Parallel checks failed: {e}")
+                await log("ERROR", f"{FAIL} Parallel checks failed: {e}")
                 return self._build_error_result(target_info.full_url, logs, start_time, str(e))
 
-            # TLS Checks
+            # ===========================================================
+            # PHASE: TLS/SSL Analysis
+            # ===========================================================
             tls_details = None
             final_scheme = response.url.scheme
             final_host = response.url.host
             final_port = response.url.port or (443 if final_scheme == "https" else 80)
             
             if final_scheme == "https":
-                await log("INFO", f"Collecting TLS info for host {final_host}...")
+                await log("INFO", f"{'-'*60}")
+                await log("INFO", f"[TLS] TLS/SSL ANALYSIS")
+                await log("INFO", f"{'-'*60}")
+                await log("INFO", f"{SPIN} Analyzing TLS certificate for {final_host}...")
                 loop = asyncio.get_running_loop()
                 try:
-                    await log("INFO", "Starting TLS check with 5s timeout...")
                     tls_result = await asyncio.wait_for(
                         loop.run_in_executor(None, check_tls, final_host, final_port),
                         timeout=5.0
                     )
                     tls_findings, tls_details = tls_result
                     if tls_details:
-                        await log("INFO", "TLS info collected.")
+                        await log("INFO", f"{CHECK} TLS certificate validated")
+                        if tls_details.get('days_until_expiry'):
+                            await log("INFO", f"   {ARROW} Expires in {tls_details.get('days_until_expiry')} days")
                     if tls_findings:
+                        await log("WARNING", f"   [!]  {len(tls_findings)} TLS issue(s) found")
                         findings.extend(tls_findings)
                 except asyncio.TimeoutError:
-                    await log("WARNING", "TLS check timed out, skipping.")
+                    await log("WARNING", f"{FAIL} TLS check timed out")
                 except Exception as e:
-                    await log("ERROR", f"TLS check failed: {e}")
+                    await log("ERROR", f"{FAIL} TLS check failed: {e}")
             
-            # Tech Fingerprinting (before other checks)
+            # ===========================================================
+            # PHASE: Technology Fingerprinting
+            # ===========================================================
+            await log("INFO", f"{'-'*60}")
+            await log("INFO", f"[TECH] TECHNOLOGY FINGERPRINTING")
+            await log("INFO", f"{'-'*60}")
             tech_fingerprint_data = None
             try:
-                await log("INFO", "Running tech fingerprinting...")
+                await log("INFO", f"{SPIN} Detecting technologies...")
                 fingerprinter = TechFingerprinter(
                     http_client=self.http_client,
                     log_callback=log,
@@ -227,35 +250,48 @@ class ScanEngine:
                 # Log detected technologies summary
                 if tech_result.technologies:
                     tech_names = [t.name for t in tech_result.technologies[:5]]
-                    suffix = f"... (+{len(tech_result.technologies) - 5} more)" if len(tech_result.technologies) > 5 else ""
-                    await log("INFO", f"Technologies detected: {', '.join(tech_names)}{suffix}")
+                    suffix = f" (+{len(tech_result.technologies) - 5} more)" if len(tech_result.technologies) > 5 else ""
+                    await log("INFO", f"{CHECK} Detected: {', '.join(tech_names)}{suffix}")
                 else:
-                    await log("INFO", "No technologies detected via fingerprinting")
+                    await log("INFO", f"{FAIL} No technologies detected")
                     
             except Exception as e:
-                await log("WARNING", f"Tech fingerprinting failed: {e}")
+                await log("WARNING", f"{FAIL} Tech fingerprinting failed: {e}")
                 tech_fingerprint_data = {"error": str(e)}
 
-            # Header Checks
-            await log("INFO", "Analyzing HTTP headers...")
+            # ===========================================================
+            # PHASE: Security Headers & Cookies Analysis  
+            # ===========================================================
+            await log("INFO", f"{'-'*60}")
+            await log("INFO", f"[HEADERS] SECURITY HEADERS & COOKIES")
+            await log("INFO", f"{'-'*60}")
+            
+            await log("INFO", f"{SPIN} Analyzing HTTP security headers...")
             header_findings = check_security_headers(response.headers)
             if header_findings:
+                await log("WARNING", f"   [!]  {len(header_findings)} missing security header(s)")
                 findings.extend(header_findings)
+            else:
+                await log("INFO", f"{CHECK} All recommended headers present")
 
-            # Cookie Checks
-            await log("INFO", "Analyzing cookies...")
+            await log("INFO", f"{SPIN} Analyzing cookies...")
             cookies_list, cookies_summary, cookie_findings = analyze_cookies(self.http_client.history)
             cookies_debug = {"cookies": cookies_list, "cookies_summary": cookies_summary}
             if cookie_findings:
+                await log("WARNING", f"   [!]  {len(cookie_findings)} cookie security issue(s)")
                 findings.extend(cookie_findings)
+            else:
+                await log("INFO", f"{CHECK} Cookies analyzed: {len(cookies_list)} found")
             cookies_present = len(cookies_list) > 0
 
-            # CORS Check
-            await log("INFO", "Analyzing CORS headers...")
+            await log("INFO", f"{SPIN} Probing CORS configuration...")
             from .cors_checks import check_cors
             cors_findings, cors_info = await check_cors(target_info.full_url, response.headers, self.http_client, log, cookies_present=cookies_present)
             if cors_findings:
+                await log("WARNING", f"   [!]  {len(cors_findings)} CORS misconfiguration(s)")
                 findings.extend(cors_findings)
+            else:
+                await log("INFO", f"{CHECK} CORS configuration OK")
 
             # Streaming Crawler & Vuln Checks
             discovery_results = []
@@ -304,38 +340,49 @@ class ScanEngine:
                             "evidence": sens_evidence
                         })
 
+            # ===========================================================
+            # PHASE: Content Crawling & Discovery
+            # ===========================================================
             try:
                 content_type = response.headers.get("Content-Type", "").lower()
                 if "text/html" in content_type:
-                    # Get crawl limit based on profile (PR-02b)
                     crawl_limit = get_crawl_limit_for_profile(path_profile)
-                    await log("INFO", f"HTML content detected, starting streaming crawler (max {crawl_limit} URLs)...")
+                    await log("INFO", f"{'-'*60}")
+                    await log("INFO", f"[CRAWL]  CONTENT CRAWLING")
+                    await log("INFO", f"{'-'*60}")
+                    await log("INFO", f"{SPIN} Crawling pages (max {crawl_limit} URLs)...")
+                    
                     from .crawler import SimpleCrawler
                     crawler = SimpleCrawler(self.http_client, log)
                     
                     tasks = []
                     tasks.append(asyncio.create_task(process_url(target_info.full_url)))
                     
-                    # Pass profile-based limit to crawler
                     async for asset in crawler.crawl_generator(target_info.full_url, response.text, max_urls=crawl_limit):
                         discovery_results.append(asset)
                         tasks.append(asyncio.create_task(process_url(asset)))
                     
                     if tasks:
                         await asyncio.gather(*tasks)
+                    
+                    await log("INFO", f"{CHECK} Crawled {len(discovery_results)} pages/assets")
                         
                 else:
-                    await log("INFO", "Non-HTML content, skipping crawler.")
+                    await log("INFO", f"{SPIN} Non-HTML content, skipping crawler")
                     await process_url(target_info.full_url)
                     
             except Exception as e:
-                await log("ERROR", f"Crawler/Pipeline failed: {e}")
+                await log("ERROR", f"{FAIL} Crawler failed: {e}")
 
-            # Batch Vulnerability Checks (XSS & SQLi) with Deduplication
+            # ===========================================================
+            # PHASE: Vulnerability Scanning (XSS, SQLi)
+            # ===========================================================
             if all_urls:
-                await log("INFO", f"Running batch XSS/SQLi checks on {len(all_urls)} unique URLs...")
+                await log("INFO", f"{'-'*60}")
+                await log("INFO", f"[VULN] VULNERABILITY SCANNING")
+                await log("INFO", f"{'-'*60}")
+                await log("INFO", f"{SPIN} Testing {len(all_urls)} URLs for XSS/SQLi...")
                 
-                # Run XSS and SQLi checks in parallel on the collected URLs
                 batch_results = await asyncio.gather(
                     check_xss(target_info.full_url, self.http_client, log, discovered_urls=all_urls),
                     check_sqli(target_info.full_url, self.http_client, log, discovered_urls=all_urls),
@@ -346,33 +393,50 @@ class ScanEngine:
                 if not isinstance(batch_results[0], Exception):
                     x_findings, x_debug = batch_results[0]
                     vuln_findings.extend(x_findings)
+                    if x_findings:
+                        await log("WARNING", f"   [HIGH] XSS vulnerabilities found: {len(x_findings)}")
+                    else:
+                        await log("INFO", f"{CHECK} No XSS vulnerabilities detected")
                     checks_outcomes.append({
                         "name": "xss_batch",
                         "outcome": "fail" if x_findings else "pass",
                         "evidence": x_debug.get("evidence", [])
                     })
                 else:
-                    await log("ERROR", f"Batch XSS check failed: {batch_results[0]}")
+                    await log("ERROR", f"{FAIL} XSS check failed: {batch_results[0]}")
 
                 # Process SQLi Results
                 if not isinstance(batch_results[1], Exception):
                     s_findings, s_debug = batch_results[1]
                     vuln_findings.extend(s_findings)
+                    if s_findings:
+                        await log("WARNING", f"   [HIGH] SQLi vulnerabilities found: {len(s_findings)}")
+                    else:
+                        await log("INFO", f"{CHECK} No SQLi vulnerabilities detected")
                     checks_outcomes.append({
                         "name": "sqli_batch",
                         "outcome": "fail" if s_findings else "pass",
                         "evidence": s_debug.get("evidence", [])
                     })
                 else:
-                    await log("ERROR", f"Batch SQLi check failed: {batch_results[1]}")
+                    await log("ERROR", f"{FAIL} SQLi check failed: {batch_results[1]}")
 
-            # Path Discovery (uses profile from config - PR-02a)
+            # ===========================================================
+            # PHASE: Path Discovery
+            # ===========================================================
+            await log("INFO", f"{'-'*60}")
+            await log("INFO", f"📂 PATH DISCOVERY ({path_profile.value.upper()})")
+            await log("INFO", f"{'-'*60}")
             try:
                 path_discoverer = PathDiscoverer(self.http_client, log, profile=path_profile)
-                await log("INFO", f"Using path discovery profile: {path_profile.value}")
+                await log("INFO", f"{SPIN} Probing common paths and directories...")
                 discovered_paths = await path_discoverer.run(target_info.full_url)
+                if discovered_paths:
+                    await log("INFO", f"{CHECK} Found {len(discovered_paths)} interesting paths")
+                else:
+                    await log("INFO", f"{CHECK} No exposed paths found")
             except Exception as e:
-                await log("ERROR", f"Path discovery failed: {e}")
+                await log("ERROR", f"{FAIL} Path discovery failed: {e}")
 
             # HTTPS Enforcement
             try:
@@ -395,11 +459,33 @@ class ScanEngine:
             findings.extend(vuln_findings)
             
             if any(f.category == "xss" for f in vuln_findings):
-                await log("WARNING", "Potential XSS vulnerability detected!")
+                await log("WARNING", "   [HIGH] Potential XSS vulnerability detected!")
             if any(f.category == "sqli" for f in vuln_findings):
-                await log("WARNING", "Potential SQL Injection detected!")
+                await log("WARNING", "   [HIGH] Potential SQL Injection detected!")
 
-            await log("INFO", "Scan completed.")
+            # ===========================================================
+            # SCAN COMPLETE
+            # ===========================================================
+            scan_duration = (datetime.utcnow() - start_time).total_seconds()
+            await log("INFO", f"{'='*60}")
+            await log("INFO", f"[DONE] SCAN COMPLETE")
+            await log("INFO", f"{'='*60}")
+            await log("INFO", f"   Duration: {scan_duration:.1f}s")
+            await log("INFO", f"   Findings: {len(findings)}")
+            
+            # Count by severity
+            critical = sum(1 for f in findings if f.severity == Severity.CRITICAL)
+            high = sum(1 for f in findings if f.severity == Severity.HIGH)
+            medium = sum(1 for f in findings if f.severity == Severity.MEDIUM)
+            low = sum(1 for f in findings if f.severity == Severity.LOW)
+            
+            if critical or high:
+                await log("WARNING", f"   [HIGH] Critical: {critical}, High: {high}")
+            if medium:
+                await log("INFO", f"   [MED] Medium: {medium}")
+            if low:
+                await log("INFO", f"   [LOW] Low: {low}")
+            await log("INFO", f"{'='*60}")
             
             # Network Exposure Analysis (v2 with CDN detection)
             network_exposure = {}
@@ -442,13 +528,15 @@ class ScanEngine:
                     summary += " No unexpected services detected."
                     
                 network_exposure = {
-                    "confirmed_open_ports": confirmed_open,
-                    "suspected_open_ports": suspected_open,
-                    "cdn_catchall_ports": cdn_catchall,
-                    "filtered_ports_count": filtered_count,
+                    "confirmed_open": confirmed_open,
+                    "suspected_open": suspected_open,
                     "unexpected_services": unexpected_services,
+                    "cdn_catchall_count": len(cdn_catchall) if cdn_catchall else 0,
+                    "filtered_count": filtered_count,
                     "cdn_detected": port_scan_summary.cdn_detected if port_scan_summary else False,
                     "cdn_provider": port_scan_summary.cdn_provider if port_scan_summary else None,
+                    "total_scanned": port_scan_summary.ports_scanned if port_scan_summary else 0,
+                    "scan_duration_ms": port_scan_summary.duration_ms if port_scan_summary else 0,
                     "summary": summary
                 }
 

@@ -5,6 +5,7 @@ import { getAiDebug } from '@/lib/api';
 import AiProviderToggle from './AiProviderToggle';
 import AiAnalysisSection from './AiAnalysisSection';
 import TechStackSection from './TechStackSection';
+import NetworkExposureSection from './NetworkExposureSection';
 
 export default function ResultTabs({ result }: { result: ScanResult | null }) {
     const [showAiDebug, setShowAiDebug] = useState(false);
@@ -98,6 +99,9 @@ export default function ResultTabs({ result }: { result: ScanResult | null }) {
                     </div>
                 </div>
             </div>
+
+            {/* Network Exposure Section */}
+            <NetworkExposureSection networkExposure={result.debug_info?.network_exposure} />
 
             {/* Tech Stack Section */}
             <TechStackSection fingerprint={result.debug_info?.tech_fingerprint} />
