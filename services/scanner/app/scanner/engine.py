@@ -124,7 +124,8 @@ class ScanEngine:
                     results, summary = await scan_ports(
                         hostname,  # Use hostname for CDN detection & SNI
                         log_callback=log,
-                        profile=port_scan_profile
+                        profile=port_scan_profile,
+                        use_nmap=port_scan_profile == PortScanProfile.HIGH
                     )
                     port_scan_summary = summary
                     return results
@@ -501,7 +502,13 @@ class ScanEngine:
                     if p.final_state == PortState.OPEN_CONFIRMED:
                         port_num = p.port
                         service = p.service_confirmed or p.service_guess or "unknown"
-                        confirmed_open.append({"port": port_num, "service": service, "risk": p.risk_level})
+                        confirmed_open.append({
+                            "port": port_num, 
+                            "service": service, 
+                            "risk": p.risk_level,
+                            "version": p.version,
+                            "product": p.product
+                        })
                         if port_num not in EXPECTED_PORTS:
                             unexpected_services.append({"port": port_num, "service": service, "risk": p.risk_level})
                     elif p.final_state == PortState.OPEN_SUSPECTED:
@@ -537,6 +544,7 @@ class ScanEngine:
                     "cdn_provider": port_scan_summary.cdn_provider if port_scan_summary else None,
                     "total_scanned": port_scan_summary.ports_scanned if port_scan_summary else 0,
                     "scan_duration_ms": port_scan_summary.duration_ms if port_scan_summary else 0,
+                    "scan_method": port_scan_summary.scan_method if port_scan_summary else "tcp_connect",
                     "summary": summary
                 }
 
@@ -561,7 +569,11 @@ class ScanEngine:
                         "final_state": p.final_state.value if p.final_state else None,
                         "service_guess": p.service_guess,
                         "service_confirmed": p.service_confirmed,
+                        "product": p.product,
+                        "cpe": p.cpe,
+                        "extra_info": p.extra_info,
                         "banner": p.banner,
+                        "version": p.version,
                         "risk_level": p.risk_level,
                         "risk_reason": p.risk_reason,
                         "owasp_refs": p.owasp_refs,

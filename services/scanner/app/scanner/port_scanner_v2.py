@@ -72,6 +72,9 @@ class PortResult:
     risk_reason: Optional[str] = None
     owasp_refs: List[str] = field(default_factory=list)
     latency_ms: Optional[int] = None
+    product: Optional[str] = None           # Nmap product detection
+    cpe: Optional[str] = None              # Nmap CPE
+    extra_info: Optional[str] = None       # Nmap extra info
 
 
 @dataclass
@@ -552,12 +555,128 @@ async def scan_port_with_validation(
         )
 
 
+# =============================================================================
+# NMAP INTEGRATION
+# =============================================================================
+
+def parse_nmap_xml(xml_content: str) -> Dict[int, Dict[str, str]]:
+    """
+    Parse Nmap XML output to extract service/version info.
+    Returns dict: {port: {'service': ..., 'product': ..., 'version': ...}}
+    """
+    results = {}
+    try:
+        root = ET.fromstring(xml_content.strip())
+        for host in root.findall('.//host'):
+            for port_elem in host.findall('.//port'):
+                try:
+                    portid = int(port_elem.get('portid'))
+                    service_elem = port_elem.find('service')
+                    
+                    if service_elem is not None:
+                        name = service_elem.get('name', '')
+                        product = service_elem.get('product', '')
+                        version = service_elem.get('version', '')
+                        extrainfo = service_elem.get('extrainfo', '')
+                        
+                        # Get CPE if available
+                        cpe_elem = service_elem.find('.//cpe')
+                        cpe = cpe_elem.text if cpe_elem is not None else None
+                        
+                        results[portid] = {
+                            "service": name,
+                            "product": product,
+                            "version": version,
+                            "extrainfo": extrainfo,
+                            "cpe": cpe
+                        }
+                except (ValueError, AttributeError):
+                    continue
+    except ET.ParseError as e:
+        logger.error(f"Nmap XML parse error: {e}")
+        pass
+    except Exception as e:
+        logger.error(f"Nmap parsing unexpected error: {e}")
+        pass
+    
+    return results
+
+
+async def run_nmap_service_detection(
+    target: str,
+    ports: List[int],
+    log_callback: Optional[Callable[[str, str], Awaitable[None]]] = None
+) -> Dict[int, Dict[str, str]]:
+    """
+    Run Nmap version detection (-sV) on specific ports.
+    Only runs if Nmap is installed.
+    """
+    if not shutil.which("nmap"):
+        return {}
+
+    if not ports:
+        return {}
+
+    # Limit batch size to avoid command line length issues
+    # But usually 1000 ports is fine.
+    
+    port_spec = ",".join(str(p) for p in ports)
+    
+    cmd = [
+        "nmap",
+        "-sV",                  # Service/Version detection
+        "--version-light",      # Faster version detection (limit probability 2)
+        "-Pn",                  # Treat host as online (we already know it is)
+        "-n",                   # No DNS resolution (we have IP or handled it)
+        "-T4",                  # Aggressive timing
+        f"-p{port_spec}",       # Specific ports
+        "-oX", "-",            # Output XML to stdout
+        target
+    ]
+    
+    try:
+        if log_callback:
+            await log_callback("info", f"    Running Nmap service detection on {len(ports)} ports...")
+            
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # 2 minute timeout for Nmap
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120.0)
+        except asyncio.TimeoutError:
+            if log_callback:
+                await log_callback("warning", "    [!] Nmap scan timed out (killing process)")
+            try:
+                process.kill()
+            except:
+                pass
+            return {}
+            
+        if process.returncode != 0:
+            error_msg = stderr.decode('utf-8', errors='replace')[:200]
+            if log_callback:
+                await log_callback("warning", f"    [!] Nmap failed: {error_msg}")
+            return {}
+            
+        return parse_nmap_xml(stdout.decode('utf-8', errors='replace'))
+        
+    except Exception as e:
+        if log_callback:
+            await log_callback("error", f"    [!] Nmap execution error: {str(e)}")
+        return {}
+
+
 async def scan_ports_v2(
     target: str,
     log_callback: Optional[Callable[[str, str], Awaitable[None]]] = None,
     profile: PortScanProfile = PortScanProfile.LIGHT,
     timeout: float = 5.0,
-    concurrency: int = 50
+    concurrency: int = 50,
+    use_nmap: bool = False
 ) -> Tuple[List[PortResult], ScanSummary]:
     """
     Enhanced port scanner with CDN detection and service validation.
@@ -622,6 +741,16 @@ async def scan_ports_v2(
         await log("info", f"    {ARROW} Will validate services to filter catch-all TCP ports")
     else:
         await log("info", f"{CHECK} No CDN detected - standard scan mode")
+    
+    # Check Nmap availability
+    nmap_path = shutil.which("nmap")
+    nmap_available = nmap_path is not None
+    
+    if use_nmap and not nmap_available:
+        await log("warning", f"{WARN} Nmap requested but not installed/found in PATH. Falling back to pure Python scan.")
+        use_nmap = False
+    elif use_nmap:
+        await log("info", f"{CHECK} Nmap capability active (will run on open ports)")
     
     # =========================================================================
     # PHASE 4: Port Scanning with Service Validation
@@ -743,6 +872,62 @@ async def scan_ports_v2(
     
     if is_cdn and catchall:
         await log("info", f"[INFO] {len(catchall)} ports ignored (CDN accepts all TCP connections)")
+    
+    # =========================================================================
+    # PHASE 6: Nmap Enrichment (Optional, Post-Validation)
+    # =========================================================================
+    if use_nmap and confirmed:
+        await log("info", "")
+        await log("info", "[NMAP] ENRICHING NETWORK RESULTS")
+        
+        # Collect ports to scan (confirmed open + suspected)
+        # We generally trust our validation, but Nmap might find details on 'suspected' ones too 
+        # For now, let's focus on CONFIRMED to save time and because suspected are likely filtered/wrappers
+        targets_ports = [r.port for r in confirmed]
+        
+        if targets_ports:
+            nmap_data = await run_nmap_service_detection(
+                target=primary_ip, # use IP to avoid resolving again
+                ports=targets_ports,
+                log_callback=log
+            )
+            
+            # Merge results
+            updates = 0
+            for r in results:
+                if r.port in nmap_data:
+                    data = nmap_data[r.port]
+                    
+                    # Update fields
+                    if data.get('service') and data['service'] != "unknown":
+                        r.service_confirmed = data['service']
+                    
+                    # Construct detailed version string
+                    prod = data.get('product', '')
+                    ver = data.get('version', '')
+                    extra = data.get('extrainfo', '')
+                    
+                    full_version_parts = [p for p in [prod, ver, extra] if p]
+                    if full_version_parts:
+                        r.version = " ".join(full_version_parts)
+                        r.product = prod # Store structured
+                    
+                    if data.get('cpe'):
+                        r.cpe = data['cpe']
+                        
+                    r.validation_method = "nmap_fingerprint"
+                    updates += 1
+            
+            if updates > 0:
+                await log("info", f"    {CHECK} Enriched {updates} services with signatures")
+                
+                # Re-log enriched services for clarity
+                await log("info", "[OPEN] FINAL SERVICE IDENTIFICATION:")
+                for r in results:
+                    if r.port in nmap_data:
+                        ver_str = r.version or ""
+                        svc_str = r.service_confirmed or "unknown"
+                        await log("info", f"    [NMAP] {r.port:5d}/tcp --> {svc_str.upper():12s} | {ver_str}")
     
     
     return results, summary

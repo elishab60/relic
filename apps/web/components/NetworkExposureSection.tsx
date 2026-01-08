@@ -7,6 +7,8 @@ interface OpenPort {
     port: number;
     service: string;
     risk: string;
+    version?: string;
+    product?: string;
 }
 
 interface NetworkExposure {
@@ -19,6 +21,7 @@ interface NetworkExposure {
     cdn_catchall_count?: number;
     filtered_count?: number;
     scan_duration_ms?: number;
+    scan_method?: string;
 }
 
 interface NetworkExposureSectionProps {
@@ -34,7 +37,8 @@ const RISK_COLORS: Record<string, { text: string; bg: string; border: string }> 
 };
 
 function PortBadge({ port }: { port: OpenPort }) {
-    const riskStyle = RISK_COLORS[port.risk] || RISK_COLORS.info;
+    const riskStyle = RISK_COLORS[port.risk || 'info'] || RISK_COLORS.info;
+    const details = [port.product, port.version].filter(Boolean).join(' ');
 
     return (
         <div className={`
@@ -47,9 +51,18 @@ function PortBadge({ port }: { port: OpenPort }) {
             </span>
             <span className="text-terminal-dim text-xs">/tcp</span>
             <span className="text-xs text-terminal-dim">→</span>
-            <span className="text-sm text-terminal-text">{port.service.toUpperCase()}</span>
+
+            <div className="flex flex-col leading-none">
+                <span className="text-sm text-terminal-text">{(port.service || 'unknown').toUpperCase()}</span>
+                {details && (
+                    <span className="text-[10px] text-terminal-dim max-w-[150px] truncate" title={details}>
+                        {details}
+                    </span>
+                )}
+            </div>
+
             <span className={`
-                text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border
+                text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ml-1
                 ${riskStyle.text} ${riskStyle.border}
             `}>
                 {port.risk}
@@ -74,7 +87,8 @@ export default function NetworkExposureSection({ networkExposure }: NetworkExpos
         cdn_provider,
         cdn_catchall_count,
         filtered_count,
-        scan_duration_ms
+        scan_duration_ms,
+        scan_method
     } = networkExposure;
 
     const confirmedOpen = confirmed_open || [];
@@ -83,6 +97,7 @@ export default function NetworkExposureSection({ networkExposure }: NetworkExpos
 
     const totalOpen = confirmedOpen.length;
     const hasUnexpected = unexpectedServices.length > 0;
+    const isNmap = scan_method?.includes('nmap');
 
     return (
         <div className="space-y-4">
@@ -99,6 +114,12 @@ export default function NetworkExposureSection({ networkExposure }: NetworkExpos
                     </span>
                 </h3>
                 <div className="flex items-center gap-2">
+                    {isNmap && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center gap-1">
+                            <Shield size={10} />
+                            NMAP ENRICHED
+                        </span>
+                    )}
                     {cdn_detected && (
                         <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-400/10 text-cyan-400 border border-cyan-400/20 flex items-center gap-1">
                             <Shield size={10} />
@@ -174,7 +195,7 @@ export default function NetworkExposureSection({ networkExposure }: NetworkExpos
                                 <p className="text-xs text-terminal-dim mt-1">
                                     {unexpectedServices.length} ports running services that may indicate security risks:
                                     {' '}
-                                    {unexpectedServices.map(p => `${p.port}/${p.service}`).join(', ')}
+                                    {unexpectedServices.map(p => `${p.port}/${p.service || 'unknown'}`).join(', ')}
                                 </p>
                             </div>
                         </div>
