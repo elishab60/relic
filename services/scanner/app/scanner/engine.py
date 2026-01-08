@@ -12,7 +12,7 @@ from .header_checks import check_security_headers
 from .cookies_checks import analyze_cookies
 from .vuln_checks import check_exposure, check_xss, check_sqli, check_https_enforcement, check_xss_url, check_sqli_url, check_sensitive_url
 from .scoring import calculate_score
-from .port_scanner import scan_ports
+from .port_scanner_v2 import scan_ports_v2 as scan_ports, PortScanProfile, ScanSummary as PortScanSummary, PortState, PortResult
 from .path_discovery import PathDiscoverer, PathDiscoveryProfile, get_crawl_limit_for_profile
 from .waf_detection import detect_waf_and_visibility
 from .tech_fingerprint import TechFingerprinter
@@ -40,6 +40,7 @@ class ScanEngine:
             log_callback: Optional async callback for real-time logging
             config: Optional scan configuration dict with:
                     - path_profile: "minimal", "standard", or "thorough"
+                    - port_scan_profile: "light", "mid", or "high"
         """
         logs: List[ScanLogEntry] = []
         findings: List[Finding] = []
@@ -51,6 +52,13 @@ class ScanEngine:
             path_profile = PathDiscoveryProfile(path_profile_str)
         except ValueError:
             path_profile = PathDiscoveryProfile.STANDARD
+        
+        # Extract port scan profile from config (PR-03)
+        port_scan_profile_str = (config or {}).get("port_scan_profile", "light")
+        try:
+            port_scan_profile = PortScanProfile(port_scan_profile_str)
+        except ValueError:
+            port_scan_profile = PortScanProfile.LIGHT
         
         async def log(level: str, message: str):
             entry = ScanLogEntry(timestamp=datetime.utcnow(), level=level, message=message)
@@ -90,11 +98,25 @@ class ScanEngine:
                     await log("ERROR", f"DNS resolution failed: {e}")
                     raise e
 
-            async def task_ports(ip_addr):
-                if not ip_addr:
+            # Port scan summary for debug_info
+            port_scan_summary: Optional[PortScanSummary] = None
+            
+            async def task_ports(hostname):
+                """
+                Port scan using hostname (not IP) to properly detect CDN catch-all.
+                The v2 scanner handles DNS resolution and CDN detection internally.
+                """
+                nonlocal port_scan_summary
+                if not hostname:
                     return []
                 try:
-                    return await scan_ports(ip_addr, log)
+                    results, summary = await scan_ports(
+                        hostname,  # Use hostname for CDN detection & SNI
+                        log_callback=log,
+                        profile=port_scan_profile
+                    )
+                    port_scan_summary = summary
+                    return results
                 except Exception as e:
                     await log("ERROR", f"Port scan failed: {e}")
                     return []
@@ -116,7 +138,8 @@ class ScanEngine:
                 try:
                     ip_address = await task_dns()
                     await log("INFO", f"DNS resolved to {ip_address}")
-                    port_scan_results = await task_ports(ip_address)
+                    # Use hostname for port scan (CDN detection + SNI)
+                    port_scan_results = await task_ports(target_info.hostname)
                 except socket.gaierror:
                     await log("ERROR", "Host unreachable (DNS resolution failed)")
                     raise
@@ -378,35 +401,54 @@ class ScanEngine:
 
             await log("INFO", "Scan completed.")
             
-            # Network Exposure Analysis
+            # Network Exposure Analysis (v2 with CDN detection)
             network_exposure = {}
             if port_scan_results:
-                open_ports = []
+                confirmed_open = []
+                suspected_open = []
+                cdn_catchall = []
                 unexpected_services = []
                 filtered_count = 0
-                EXPECTED_PORTS = {80, 443}
+                EXPECTED_PORTS = {80, 443, 8080, 8443}
+                
                 for p in port_scan_results:
-                    if p.state == "open":
+                    if p.final_state == PortState.OPEN_CONFIRMED:
                         port_num = p.port
-                        service = p.service_guess or "unknown"
-                        open_ports.append({"port": port_num, "service": service})
+                        service = p.service_confirmed or p.service_guess or "unknown"
+                        confirmed_open.append({"port": port_num, "service": service, "risk": p.risk_level})
                         if port_num not in EXPECTED_PORTS:
-                            unexpected_services.append({"port": port_num, "service": service})
-                    elif p.state == "filtered":
+                            unexpected_services.append({"port": port_num, "service": service, "risk": p.risk_level})
+                    elif p.final_state == PortState.OPEN_SUSPECTED:
+                        suspected_open.append({"port": p.port, "reason": p.risk_reason})
+                    elif p.final_state == PortState.CDN_CATCHALL:
+                        cdn_catchall.append(p.port)
+                    elif p.final_state == PortState.FILTERED:
                         filtered_count += 1
                 
-                open_ports_list = ", ".join([f"{op['port']} ({op['service'].upper()})" for op in open_ports])
-                summary = f"{len(open_ports)} open ports detected: {open_ports_list}." if open_ports else "No open ports detected."
+                # Build summary
+                if confirmed_open:
+                    open_list = ", ".join([f"{op['port']} ({op['service'].upper()})" for op in confirmed_open])
+                    summary = f"{len(confirmed_open)} confirmed open ports: {open_list}."
+                else:
+                    summary = "No confirmed open ports detected."
+                
+                if cdn_catchall:
+                    summary += f" {len(cdn_catchall)} ports ignored (CDN catch-all)."
+                
                 if unexpected_services:
                     unexpected_list = ", ".join([f"{u['port']} ({u['service'].upper()})" for u in unexpected_services])
-                    summary += f" Unexpected exposed services found: {unexpected_list}."
+                    summary += f" Unexpected exposed services: {unexpected_list}."
                 else:
-                    summary += " No additional exposed services detected on common ports."
+                    summary += " No unexpected services detected."
                     
                 network_exposure = {
-                    "open_ports": open_ports,
+                    "confirmed_open_ports": confirmed_open,
+                    "suspected_open_ports": suspected_open,
+                    "cdn_catchall_ports": cdn_catchall,
                     "filtered_ports_count": filtered_count,
                     "unexpected_services": unexpected_services,
+                    "cdn_detected": port_scan_summary.cdn_detected if port_scan_summary else False,
+                    "cdn_provider": port_scan_summary.cdn_provider if port_scan_summary else None,
                     "summary": summary
                 }
 
@@ -424,7 +466,34 @@ class ScanEngine:
                 "checks": checks_outcomes,
                 "discovery": discovery_results,
                 "discovered_paths": discovered_paths,
-                "ports": [p.model_dump() for p in port_scan_results],
+                "ports": [
+                    {
+                        "port": p.port,
+                        "state": p.tcp_state,
+                        "final_state": p.final_state.value if p.final_state else None,
+                        "service_guess": p.service_guess,
+                        "service_confirmed": p.service_confirmed,
+                        "banner": p.banner,
+                        "risk_level": p.risk_level,
+                        "risk_reason": p.risk_reason,
+                        "owasp_refs": p.owasp_refs,
+                        "latency_ms": p.latency_ms
+                    } for p in port_scan_results
+                ],
+                "port_scan_summary": {
+                    "profile": port_scan_summary.profile,
+                    "ports_scanned": port_scan_summary.ports_scanned,
+                    "open_confirmed": port_scan_summary.open_confirmed_count,
+                    "open_suspected": port_scan_summary.open_suspected_count,
+                    "cdn_catchall": port_scan_summary.cdn_catchall_count,
+                    "filtered": port_scan_summary.filtered_count,
+                    "closed": port_scan_summary.closed_count,
+                    "duration_ms": port_scan_summary.duration_ms,
+                    "scan_method": port_scan_summary.scan_method,
+                    "cdn_detected": port_scan_summary.cdn_detected,
+                    "cdn_provider": port_scan_summary.cdn_provider,
+                    "resolved_ips": port_scan_summary.resolved_ips
+                } if port_scan_summary else None,
                 "network_exposure": network_exposure,
                 "http_traffic": self.http_client.history,
                 "tech_fingerprint": tech_fingerprint_data

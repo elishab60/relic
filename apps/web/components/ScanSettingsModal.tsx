@@ -1,21 +1,24 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { X, Settings, Zap, Shield, Crosshair } from 'lucide-react';
+import { X, Settings, Zap, Shield, Crosshair, Radio, AlertTriangle } from 'lucide-react';
 import {
     PathProfile,
+    PortScanProfile,
     labelFromProfile,
-    getProfileDescription
+    getProfileDescription,
+    getPortScanProfileStats,
+    ScanConfig
 } from '@/lib/scanConfig';
 
 interface ScanSettingsModalProps {
     open: boolean;
     onClose: () => void;
-    value: PathProfile;
-    onChange: (newValue: PathProfile) => void;
+    value: ScanConfig;
+    onChange: (newValue: ScanConfig) => void;
 }
 
-interface ProfileOption {
+interface PathProfileOption {
     value: PathProfile;
     label: string;
     description: string;
@@ -24,7 +27,17 @@ interface ProfileOption {
     icon: React.ReactNode;
 }
 
-const PROFILE_OPTIONS: ProfileOption[] = [
+interface PortScanProfileOption {
+    value: PortScanProfile;
+    label: string;
+    description: string;
+    ports: number;
+    estimatedTime: string;
+    icon: React.ReactNode;
+    impact: "fast" | "medium" | "slow";
+}
+
+const PATH_PROFILE_OPTIONS: PathProfileOption[] = [
     {
         value: "minimal",
         label: "Low",
@@ -51,6 +64,54 @@ const PROFILE_OPTIONS: ProfileOption[] = [
     }
 ];
 
+const PORT_SCAN_PROFILE_OPTIONS: PortScanProfileOption[] = [
+    {
+        value: "light",
+        label: "Light",
+        description: "Common service ports only",
+        ports: 12,
+        estimatedTime: "< 5s",
+        impact: "fast",
+        icon: <Zap size={16} className="text-terminal-dim" />
+    },
+    {
+        value: "mid",
+        label: "Balanced",
+        description: "Top 100 most common ports",
+        ports: 100,
+        estimatedTime: "~30s",
+        impact: "medium",
+        icon: <Shield size={16} className="text-terminal-accent" />
+    },
+    {
+        value: "high",
+        label: "Comprehensive",
+        description: "Top 1000 ports (thorough)",
+        ports: 1000,
+        estimatedTime: "2-5 min",
+        impact: "slow",
+        icon: <AlertTriangle size={16} className="text-amber-400" />
+    }
+];
+
+function ImpactBadge({ impact }: { impact: "fast" | "medium" | "slow" }) {
+    const styles = {
+        fast: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+        medium: "bg-terminal-accent/20 text-terminal-accent border-terminal-accent/30",
+        slow: "bg-amber-500/20 text-amber-400 border-amber-500/30"
+    };
+    const labels = {
+        fast: "FAST",
+        medium: "MEDIUM",
+        slow: "SLOW"
+    };
+    return (
+        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${styles[impact]} uppercase font-bold`}>
+            {labels[impact]}
+        </span>
+    );
+}
+
 export default function ScanSettingsModal({
     open,
     onClose,
@@ -58,24 +119,30 @@ export default function ScanSettingsModal({
     onChange
 }: ScanSettingsModalProps) {
     const [isAnimating, setIsAnimating] = useState(true);
-    const [selectedValue, setSelectedValue] = useState<PathProfile>(value);
+    const [selectedPathProfile, setSelectedPathProfile] = useState<PathProfile>(value.path_profile);
+    const [selectedPortScanProfile, setSelectedPortScanProfile] = useState<PortScanProfile>(value.port_scan_profile);
 
     useEffect(() => {
         if (open) {
             setIsAnimating(true);
-            setSelectedValue(value);
+            setSelectedPathProfile(value.path_profile);
+            setSelectedPortScanProfile(value.port_scan_profile);
             const timer = setTimeout(() => setIsAnimating(false), 200);
             return () => clearTimeout(timer);
         }
     }, [open, value]);
 
     const handleSave = () => {
-        onChange(selectedValue);
+        onChange({
+            path_profile: selectedPathProfile,
+            port_scan_profile: selectedPortScanProfile
+        });
         onClose();
     };
 
     const handleCancel = () => {
-        setSelectedValue(value); // Reset to original
+        setSelectedPathProfile(value.path_profile);
+        setSelectedPortScanProfile(value.port_scan_profile);
         onClose();
     };
 
@@ -91,13 +158,13 @@ export default function ScanSettingsModal({
             </div>
 
             <div className={`
-                terminal-box border-terminal-accent/50 max-w-md w-full 
+                terminal-box border-terminal-accent/50 max-w-lg w-full max-h-[90vh] overflow-y-auto
                 shadow-[0_0_30px_rgba(95,158,160,0.2),inset_0_0_30px_rgba(95,158,160,0.05)]
                 transition-all duration-200
                 ${isAnimating ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}
             `}>
                 {/* Header */}
-                <div className="relative border-b border-terminal-accent/30 bg-terminal-accent/5">
+                <div className="relative border-b border-terminal-accent/30 bg-terminal-accent/5 sticky top-0 z-10">
                     {/* Corner decorations */}
                     <div className="absolute top-0 left-0 w-3 h-3 border-l-2 border-t-2 border-terminal-accent/60" />
                     <div className="absolute top-0 right-0 w-3 h-3 border-r-2 border-t-2 border-terminal-accent/60" />
@@ -123,12 +190,12 @@ export default function ScanSettingsModal({
                 </div>
 
                 {/* Body */}
-                <div className="p-5 space-y-5">
-                    {/* Aggressiveness Section */}
+                <div className="p-5 space-y-6">
+                    {/* Path Discovery Section */}
                     <div className="space-y-3">
                         <div className="flex items-center gap-2 text-terminal-dim text-xs uppercase tracking-wider">
                             <Crosshair size={12} />
-                            <span>Aggressiveness</span>
+                            <span>Path Discovery</span>
                         </div>
 
                         <p className="text-terminal-text text-xs">
@@ -137,12 +204,12 @@ export default function ScanSettingsModal({
 
                         {/* Radio Options */}
                         <div className="space-y-2">
-                            {PROFILE_OPTIONS.map((option) => (
+                            {PATH_PROFILE_OPTIONS.map((option) => (
                                 <label
                                     key={option.value}
                                     className={`
                                         flex items-start gap-3 p-3 rounded border cursor-pointer transition-all duration-200
-                                        ${selectedValue === option.value
+                                        ${selectedPathProfile === option.value
                                             ? 'border-terminal-accent bg-terminal-accent/10'
                                             : 'border-terminal-border hover:border-terminal-accent/50 hover:bg-terminal-accent/5'
                                         }
@@ -151,12 +218,12 @@ export default function ScanSettingsModal({
                                     {/* Custom Radio */}
                                     <div className={`
                                         flex-shrink-0 w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center transition-all duration-200
-                                        ${selectedValue === option.value
+                                        ${selectedPathProfile === option.value
                                             ? 'border-terminal-accent'
                                             : 'border-terminal-border'
                                         }
                                     `}>
-                                        {selectedValue === option.value && (
+                                        {selectedPathProfile === option.value && (
                                             <div className="w-2 h-2 rounded-full bg-terminal-accent" />
                                         )}
                                     </div>
@@ -164,8 +231,8 @@ export default function ScanSettingsModal({
                                         type="radio"
                                         name="path_profile"
                                         value={option.value}
-                                        checked={selectedValue === option.value}
-                                        onChange={() => setSelectedValue(option.value)}
+                                        checked={selectedPathProfile === option.value}
+                                        onChange={() => setSelectedPathProfile(option.value)}
                                         className="sr-only"
                                     />
 
@@ -179,7 +246,7 @@ export default function ScanSettingsModal({
                                         <div className="flex items-center gap-2">
                                             <span className={`
                                                 font-bold text-sm
-                                                ${selectedValue === option.value
+                                                ${selectedPathProfile === option.value
                                                     ? 'text-terminal-textBright'
                                                     : 'text-terminal-text'
                                                 }
@@ -209,10 +276,110 @@ export default function ScanSettingsModal({
                             ))}
                         </div>
                     </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-terminal-border/50" />
+
+                    {/* Port Scanning Section */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-terminal-dim text-xs uppercase tracking-wider">
+                            <Radio size={12} />
+                            <span>Port Scanning</span>
+                        </div>
+
+                        <p className="text-terminal-text text-xs">
+                            Controls how many ports are scanned for open services.
+                        </p>
+
+                        {/* Radio Options */}
+                        <div className="space-y-2">
+                            {PORT_SCAN_PROFILE_OPTIONS.map((option) => (
+                                <label
+                                    key={option.value}
+                                    className={`
+                                        flex items-start gap-3 p-3 rounded border cursor-pointer transition-all duration-200
+                                        ${selectedPortScanProfile === option.value
+                                            ? 'border-terminal-accent bg-terminal-accent/10'
+                                            : 'border-terminal-border hover:border-terminal-accent/50 hover:bg-terminal-accent/5'
+                                        }
+                                    `}
+                                >
+                                    {/* Custom Radio */}
+                                    <div className={`
+                                        flex-shrink-0 w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center transition-all duration-200
+                                        ${selectedPortScanProfile === option.value
+                                            ? 'border-terminal-accent'
+                                            : 'border-terminal-border'
+                                        }
+                                    `}>
+                                        {selectedPortScanProfile === option.value && (
+                                            <div className="w-2 h-2 rounded-full bg-terminal-accent" />
+                                        )}
+                                    </div>
+                                    <input
+                                        type="radio"
+                                        name="port_scan_profile"
+                                        value={option.value}
+                                        checked={selectedPortScanProfile === option.value}
+                                        onChange={() => setSelectedPortScanProfile(option.value)}
+                                        className="sr-only"
+                                    />
+
+                                    {/* Icon */}
+                                    <div className="flex-shrink-0 mt-0.5">
+                                        {option.icon}
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`
+                                                font-bold text-sm
+                                                ${selectedPortScanProfile === option.value
+                                                    ? 'text-terminal-textBright'
+                                                    : 'text-terminal-text'
+                                                }
+                                            `}>
+                                                {option.label}
+                                            </span>
+                                            {option.value === "light" && (
+                                                <span className="text-[10px] px-1.5 py-0.5 bg-terminal-accent/20 text-terminal-accent rounded uppercase">
+                                                    Default
+                                                </span>
+                                            )}
+                                            <ImpactBadge impact={option.impact} />
+                                        </div>
+                                        <p className="text-terminal-dim text-xs mt-1">
+                                            {option.description}
+                                        </p>
+                                        {/* Stats */}
+                                        <div className="flex items-center gap-3 mt-2">
+                                            <span className="text-[10px] text-terminal-text font-mono">
+                                                <span className="text-terminal-dim">Ports:</span> {option.ports}
+                                            </span>
+                                            <span className="text-[10px] text-terminal-text font-mono">
+                                                <span className="text-terminal-dim">Est. Time:</span> {option.estimatedTime}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
+
+                        {/* Warning for HIGH profile */}
+                        {selectedPortScanProfile === "high" && (
+                            <div className="flex items-start gap-2 p-3 rounded border border-amber-500/30 bg-amber-500/10">
+                                <AlertTriangle size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-200">
+                                    <strong>Warning:</strong> Comprehensive port scan can take several minutes and generates significant network traffic. Use only on targets you own or have explicit permission to scan.
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Footer */}
-                <div className="relative border-t border-terminal-border bg-terminal-bg/50">
+                <div className="relative border-t border-terminal-border bg-terminal-bg/50 sticky bottom-0">
                     {/* Corner decorations */}
                     <div className="absolute bottom-0 left-0 w-3 h-3 border-l-2 border-b-2 border-terminal-accent/60" />
                     <div className="absolute bottom-0 right-0 w-3 h-3 border-r-2 border-b-2 border-terminal-accent/60" />

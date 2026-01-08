@@ -6,11 +6,14 @@ import uuid
 
 
 # =============================================================================
-# SCAN CONFIGURATION MODELS (PR-02a)
+# SCAN CONFIGURATION MODELS (PR-02a, PR-03 Port Scan Profiles)
 # =============================================================================
 
 # Valid path discovery profile values
 PathProfileLiteral = Literal["minimal", "standard", "thorough"]
+
+# Valid port scan profile values
+PortScanProfileLiteral = Literal["light", "mid", "high"]
 
 
 class ScanConfig(BaseModel):
@@ -22,8 +25,14 @@ class ScanConfig(BaseModel):
                       - "minimal": ~13 paths (fast, legacy behavior)
                       - "standard": ~50 paths (default, balanced)
                       - "thorough": ~115 paths (deep scan, bounded)
+        
+        port_scan_profile: Port scanning intensity profile.
+                           - "light": ~12 common ports (very fast, <5s)
+                           - "mid": Top 100 ports (balanced, ~30s)
+                           - "high": Top 1000 ports (comprehensive, 2-5min)
     """
     path_profile: PathProfileLiteral = "standard"
+    port_scan_profile: PortScanProfileLiteral = "light"
 
 
 class ScanRequest(BaseModel):

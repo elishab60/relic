@@ -144,9 +144,12 @@ async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks):
             }
         )
 
-    # Extract effective config (PR-02a)
+    # Extract effective config (PR-02a, PR-03)
     effective_config = request.get_effective_config()
-    config_dict = {"path_profile": effective_config.path_profile}
+    config_dict = {
+        "path_profile": effective_config.path_profile,
+        "port_scan_profile": effective_config.port_scan_profile
+    }
     
     # Create scan in DB with config persisted
     scan = store.create_scan(request.target, config_json=config_dict)

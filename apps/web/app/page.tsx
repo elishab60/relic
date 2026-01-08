@@ -13,13 +13,17 @@ import { useScanLogs } from '@/lib/sse';
 import { startScan, getResult } from '@/lib/api';
 import { ScanResult } from '@/lib/types';
 import {
+    ScanConfig,
     PathProfile,
+    PortScanProfile,
     getStoredScanConfig,
     setStoredScanConfig,
     labelFromProfile,
-    getProfileStats
+    labelFromPortScanProfile,
+    getProfileStats,
+    getPortScanProfileStats
 } from '@/lib/scanConfig';
-import { Shield, Play, Loader2, Terminal, AlertTriangle, X, Crosshair, Lock, Unlock, Settings, Gauge } from 'lucide-react';
+import { Shield, Play, Loader2, Terminal, AlertTriangle, X, Crosshair, Lock, Unlock, Settings, Gauge, Radio } from 'lucide-react';
 
 // Authorization Modal Component - Cyberpunk Terminal Style
 function AuthorizationModal({
@@ -198,20 +202,23 @@ export default function Page() {
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
 
-    // PR-02b: Scan settings state
+    // PR-02b, PR-03: Scan settings state (full ScanConfig)
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [pathProfile, setPathProfile] = useState<PathProfile>("standard");
+    const [scanConfig, setScanConfig] = useState<ScanConfig>({
+        path_profile: "standard",
+        port_scan_profile: "light"
+    });
 
     // Initialize scan config from localStorage on mount
     useEffect(() => {
         const storedConfig = getStoredScanConfig();
-        setPathProfile(storedConfig.path_profile);
+        setScanConfig(storedConfig);
     }, []);
 
-    // Handle path profile change (save to localStorage)
-    const handlePathProfileChange = (newProfile: PathProfile) => {
-        setPathProfile(newProfile);
-        setStoredScanConfig({ path_profile: newProfile });
+    // Handle config change (save to localStorage)
+    const handleConfigChange = (newConfig: ScanConfig) => {
+        setScanConfig(newConfig);
+        setStoredScanConfig(newConfig);
     };
 
     const { logs, status } = useScanLogs(scanId);
@@ -255,8 +262,8 @@ export default function Page() {
 
         try {
             setScanId(null);
-            // Pass authorized: true and config with path_profile (PR-02b)
-            const { scan_id } = await startScan(target, true, { path_profile: pathProfile });
+            // Pass authorized: true and full config (PR-02b, PR-03)
+            const { scan_id } = await startScan(target, true, scanConfig);
             setScanId(scan_id);
         } catch (err) {
             const message = err instanceof Error ? err.message : "Failed to start scan";
@@ -275,7 +282,8 @@ export default function Page() {
 
 
     // Get profile stats for display
-    const profileStats = getProfileStats(pathProfile);
+    const pathProfileStats = getProfileStats(scanConfig.path_profile);
+    const portScanProfileStats = getPortScanProfileStats(scanConfig.port_scan_profile);
 
     return (
         <TerminalShell
@@ -284,11 +292,11 @@ export default function Page() {
                     onClick={() => setShowSettingsModal(true)}
                     disabled={status === 'running'}
                     className="flex items-center gap-2 px-4 py-2 rounded border border-terminal-border text-terminal-text hover:bg-terminal-border/30 hover:text-terminal-textBright transition-all group disabled:opacity-50"
-                    title={`Scan Settings: ${labelFromProfile(pathProfile)} - ${profileStats.maxPages} pages max`}
+                    title={`Scan Settings: ${labelFromProfile(scanConfig.path_profile)} paths, ${labelFromPortScanProfile(scanConfig.port_scan_profile)} ports`}
                 >
                     <Settings size={18} className="group-hover:scale-110 transition-transform" />
                     <span className="font-mono text-sm hidden md:inline">
-                        {labelFromProfile(pathProfile)}
+                        {labelFromProfile(scanConfig.path_profile)} / {portScanProfileStats.ports} ports
                     </span>
                 </button>
             }
@@ -302,12 +310,12 @@ export default function Page() {
                 />
             )}
 
-            {/* Scan Settings Modal (PR-02b) */}
+            {/* Scan Settings Modal (PR-02b, PR-03) */}
             <ScanSettingsModal
                 open={showSettingsModal}
                 onClose={() => setShowSettingsModal(false)}
-                value={pathProfile}
-                onChange={handlePathProfileChange}
+                value={scanConfig}
+                onChange={handleConfigChange}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">

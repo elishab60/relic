@@ -25,6 +25,7 @@ export interface PolicyError {
  */
 export interface ScanConfigPayload {
     path_profile: "minimal" | "standard" | "thorough";
+    port_scan_profile?: "light" | "mid" | "high";
 }
 
 /**

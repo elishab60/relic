@@ -497,6 +497,48 @@ def generate_markdown(result: ScanResult) -> str:
         md += f"| {sev.title()} | {count} |\n"
     md += "\n"
 
+    # Port Scan Summary Section (PR-03)
+    if result.debug_info and result.debug_info.get("port_scan_summary"):
+        pss = result.debug_info["port_scan_summary"]
+        md += "## Network Exposure\n\n"
+        
+        profile_labels = {"light": "Light", "mid": "Balanced", "high": "Comprehensive"}
+        profile = pss.get("profile", "light")
+        profile_label = profile_labels.get(profile, profile.title())
+        
+        md += f"**Scan Profile:** {profile_label}\n"
+        md += f"**Ports Scanned:** {pss.get('ports_scanned', 0)}\n"
+        md += f"**Scan Duration:** {pss.get('duration_ms', 0)}ms\n"
+        md += f"**Method:** {pss.get('scan_method', 'tcp_connect')}"
+        if pss.get("nmap_available"):
+            md += " + nmap service detection"
+        md += "\n\n"
+        
+        open_count = pss.get("open_count", 0)
+        filtered_count = pss.get("filtered_count", 0)
+        
+        md += f"| Status | Count |\n|---|---|\n"
+        md += f"| Open | {open_count} |\n"
+        md += f"| Filtered | {filtered_count} |\n"
+        md += f"| Closed | {pss.get('closed_count', 0)} |\n"
+        md += "\n"
+        
+        # List open ports with details
+        ports = result.debug_info.get("ports", [])
+        open_ports = [p for p in ports if p.get("state") == "open"]
+        
+        if open_ports:
+            md += "### Open Ports\n\n"
+            md += "| Port | Service | Risk | Details |\n|---|---|---|---|\n"
+            for p in open_ports:
+                port = p.get("port", "?")
+                service = p.get("nmap_service") or p.get("service_guess") or "unknown"
+                risk = p.get("risk_level", "info")
+                version = p.get("nmap_version", "")
+                details = version if version else (p.get("risk_reason", "") or "-")
+                md += f"| {port} | {service} | {risk.upper()} | {details} |\n"
+            md += "\n"
+
     # Tech Stack Section (if available in debug_info)
     if result.debug_info and result.debug_info.get("tech_fingerprint"):
         tech_fp = result.debug_info["tech_fingerprint"]

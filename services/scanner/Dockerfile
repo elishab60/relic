@@ -2,6 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install nmap for optional service detection
+# This enables enhanced port scanning with version detection
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends nmap && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
